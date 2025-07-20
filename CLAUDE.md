@@ -420,6 +420,40 @@ ogemini ./toy_projects/ocaml_2048/
 [自动读取 game.py，分析代码结构，生成 OCaml 版本]
 ```
 
+### Phase 2 开发和测试环境
+
+#### 测试项目设置
+- **测试项目**: `toy_projects/ocaml_2048/`
+- **项目规格**: `GEMINI.md` - "Translate game.py to OCaml with bit-level agreement"
+- **测试文件**: `game.py` - 完整的 2048 游戏实现（位操作优化）
+- **Git 管理**: 项目已初始化 git，可通过 `git checkout` 重置状态
+
+#### 开发测试流程
+```bash
+# 重置测试环境到初始状态
+cd toy_projects/ocaml_2048
+git checkout HEAD~0  # 回到第一个 commit
+
+# 启动 OGemini 项目模式进行测试
+cd ../../
+ogemini ./toy_projects/ocaml_2048/
+
+# 测试各种项目感知功能
+👤 You: What's the goal of this project?
+👤 You: Show me the project structure
+👤 You: Analyze the game.py implementation
+👤 You: Start translating to OCaml
+```
+
+#### 测试验证重点
+1. **项目上下文加载** - 正确读取 GEMINI.md 和项目文件
+2. **智能文件操作** - 项目范围内的读写和搜索
+3. **代码分析能力** - 理解 Python 代码结构和位操作逻辑
+4. **迭代开发支持** - 逐步生成和完善 OCaml 代码
+5. **状态管理** - 跟踪项目修改和开发进度
+
+通过 git reset 机制，我们可以快速重置测试环境，确保每次测试都从干净的状态开始。
+
 ## 开发原则
 1. **循序渐进，小步快跑**：每次只实现一个小功能，确保可编译运行
 2. **持续构建**：每个步骤都通过 `dune build` 和 `dune exec` 验证
