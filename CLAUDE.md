@@ -6,7 +6,7 @@
 我们希望用 OCaml 重写 Gemini-cli，作为后续扩展的基础。
 不需要兼容 Gemini-cli。先出一个能运行的 MVP。
 
-**📅 当前状态**: Phase 5.2.1 重大突破 - 编译错误自动修复系统完成，实现 ModuleNameMismatch 智能检测和自动文件重命名修复。
+**📅 当前状态**: Phase 5.2.1 + 自主能力验证 - 编译错误自动修复系统完成，基于清洁室测试验证的真实自主开发能力。
 
 ## 📊 项目进展概览
 
@@ -45,18 +45,18 @@
 - **智能目录管理**: 容器环境中自动使用 `/workspace`，本地环境使用当前目录
 - **集成到工具系统**: 无缝集成到现有 `build_tools.ml`，自动触发分析
 
-### 🧪 验证测试结果
+### 🧪 验证测试结果 **[Evidence: traces/autonomous_trace_20250721_064434.log]**
 
 **完整测试流程**: 
 ```bash
 hello.ml + dune(name main) → dune build → 错误检测 → 自动重命名 → main.ml + dune → 构建成功 → Hello, World!
 ```
 
-**关键验证点**:
-- ✅ **错误分类**: `ModuleNameMismatch(expected=Main, found=)`
-- ✅ **自动修复**: `mv hello.ml main.ml` 在正确目录执行
-- ✅ **修复验证**: 重命名后项目成功构建和运行
-- ✅ **容器兼容**: Docker 环境中工作目录检测和文件操作正常
+**关键验证点** **[Evidence: autonomous_trace_20250721_064434.log]**:
+- ✅ **错误分类**: `ModuleNameMismatch(expected=Main, found=)` [Lines 146-147]
+- ✅ **自动修复**: `mv hello.ml main.ml` 在正确目录执行 [Line 147]
+- ✅ **修复验证**: 重命名后项目成功构建和运行 [Final verification: "Hello, World!"]
+- ✅ **容器兼容**: Docker 环境中工作目录检测和文件操作正常 [Lines 146: /workspace/ paths]
 
 ### 📂 核心文件修改
 
@@ -78,6 +78,48 @@ hello.ml + dune(name main) → dune build → 错误检测 → 自动重命名 �
 4. **防御性编程**: 完善的异常处理和错误状态管理
 
 **Phase 5.2.1 为后续自主开发能力奠定了坚实基础，实现了从"工具调用"到"智能修复"的关键突破。**
+
+## 🎯 Phase 5 自主能力验证总结 **[Evidence: traces/autonomous_trace_20250721_064434.log]**
+
+**验证日期**: 2025年7月21日 06:44:34  
+**测试类型**: 完全清洁室测试（从空白 workspace 开始）  
+**测试任务**: "Create a simple hello world OCaml program"
+
+### ✅ 已验证的真实能力
+
+#### 🤖 端到端自主开发流程 **[Evidence: Lines 87-xxx]**
+- **自主规划**: LLM 生成 5 步执行计划 [Lines 108-109]
+- **智能工具调用**: 正确使用 list_files, write_file, dune_build, shell [Lines 146-147]
+- **错误检测和修复**: ModuleNameMismatch 自动检测和 `mv hello.ml main.ml` 修复 [Lines 146-147]
+- **成功构建**: 最终项目在 Docker 环境中成功构建并输出 "Hello, World!"
+
+#### 🔧 智能配置生成 **[Evidence: Lines 138-139]**
+- **项目类型检测**: 自动识别为 SimpleExecutable(main)
+- **LLM 驱动生成**: 智能生成 dune-project 和 dune 配置文件
+- **增强写入**: 自动替换用户原始 dune 内容为智能生成内容
+
+#### 📂 正确文件路径处理 **[Evidence: Line 146]**
+- **容器环境适配**: 正确使用 `/workspace/` 路径前缀
+- **文件创建成功**: 成功创建 `hello.ml`, `dune` 等文件
+
+### ❌ 已纠正的过度声明
+
+#### ❌ **复杂目录结构创建** - 未验证
+- **现实**: 仅创建平坦文件结构，未创建 `bin/`, `src/` 等子目录
+- **证据**: 创建的文件都在根目录 `/workspace/hello.ml`, `/workspace/dune`
+
+#### ❌ **自动父目录创建** - 部分验证
+- **现实**: `write_file` 工具修改后支持目录创建，但本次测试未涉及复杂目录结构
+- **状态**: 功能存在但未在实际自主测试中验证
+
+### 🚀 关键成就
+
+1. **完全自主操作**: Agent 在无人干预情况下完成完整开发周期
+2. **智能错误处理**: 自动检测和修复编译错误
+3. **端到端可执行**: 从计划到可运行程序的完整流程
+4. **容器环境兼容**: 在 Docker 隔离环境中正常工作
+
+**重要教训**: 功能声明必须基于实际清洁室测试证据，避免基于局部测试的过度推断。
 
 ## ✅ 系统健康状态 - 已验证工作正常！
 
@@ -159,6 +201,12 @@ hello.ml + dune(name main) → dune build → 错误检测 → 自动重命名 �
 - **仅在 Docker 中测试自主 Agent** - 本地测试可能产生不可预测的文件操作
 - **安全隔离原则** - 自主 Agent 具备文件创建和修改能力，必须在容器环境中运行
 - **标准测试流程** - 使用 `./scripts/test-autonomous-docker.sh` 进行验证
+
+⚠️ **关键原则：声明必须有追踪日志支持**
+- **所有功能声明必须基于清洁室测试** - 任何关于 Agent 能力的声明都必须有对应的追踪日志文件支持
+- **追踪日志位置** - 所有测试生成追踪日志保存在 `/traces/autonomous_trace_YYYYMMDD_HHMMSS.log`
+- **证据引用格式** - 重要声明必须注明具体日志文件和行号，如 `[Evidence: traces/autonomous_trace_20250721_064434.log:146-147]`
+- **验证流程** - 先进行清洁室测试生成日志，再基于日志证据更新功能声明，避免过度声明或虚假声明
 
 ⚠️ **重要：代码质量原则**
 - **未使用变量警告不可忽略** - unused variable 警告往往反映信息流断裂问题

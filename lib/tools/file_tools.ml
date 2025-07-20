@@ -16,10 +16,26 @@ let read_file (file_path : string) : simple_tool_result Lwt.t =
       let msg = Printexc.to_string exn in
       Lwt.return { content = ""; success = false; error_msg = Some msg })
 
+(** Create directory recursively *)
+let rec create_directory_recursive dir_path =
+  if not (Sys.file_exists dir_path) then (
+    let parent_dir = Filename.dirname dir_path in
+    if parent_dir <> dir_path then (
+      create_directory_recursive parent_dir
+    );
+    Unix.mkdir dir_path 0o755
+  )
+
 (** Write file tool *)
 let write_file (file_path : string) (content : string) : simple_tool_result Lwt.t =
   Lwt.catch
     (fun () ->
+      (* Create parent directory if it doesn't exist *)
+      let dir_path = Filename.dirname file_path in
+      (if dir_path <> "." && dir_path <> file_path then (
+        try create_directory_recursive dir_path
+        with Unix.Unix_error _ -> ()
+      ));
       Lwt_io.with_file ~mode:Lwt_io.Output file_path (fun oc ->
         Lwt_io.write oc content
       ) >>= fun () ->
