@@ -102,12 +102,15 @@ let main () =
   match Config.init_config () with
   | Config.ConfigError err ->
       Printf.printf "❌ Configuration error: %s\n" err;
-      Printf.printf "Please set GEMINI_API_KEY environment variable.\n";
-      Lwt.return_unit
+      Printf.printf "Please set GEMINI_API_KEY environment variable or create .env file.\n";
+      Printf.printf "Current working directory: %s\n" (Sys.getcwd ());
+      Printf.printf ".env file exists: %b\n" (Sys.file_exists ".env");
+      exit 1  (* Exit immediately instead of continuing *)
   | Config.ConfigOk config ->
       (* Start the chat *)
       Ui.print_welcome ();
       Printf.printf "✅ Using model: %s\n" config.model;
+      Printf.printf "✅ API key loaded: %s\n" (String.sub config.api_key 0 (min 10 (String.length config.api_key)) ^ "...");
       Printf.printf "💭 Thinking mode: %s\n\n" (if config.enable_thinking then "enabled" else "disabled");
       
       chat_loop config [] >>= fun () ->
