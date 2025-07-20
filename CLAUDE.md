@@ -19,98 +19,328 @@
 
 ## MVP 规格说明
 
-### 1. 名词（核心数据结构）
+### Phase 1: Plan-Act 与基础控制
+
+#### 1. 名词（核心数据结构）
 ```ocaml
 (* 配置 *)
 type config = {
   api_key: string;
   api_endpoint: string;
+  model: string;
+  enable_thinking: bool;  (* 是否启用思考模式 *)
 }
+
+(* 思考总结 *)
+type thought_summary = {
+  subject: string;     (* 思考主题 *)
+  description: string; (* 思考描述 *)
+}
+
+(* 事件类型 - 对应 gemini-cli 的事件系统 *)
+type event_type = 
+  | Content of string
+  | ToolCallRequest of string  (* 工具调用请求 *)
+  | ToolCallResponse of string (* 工具调用响应 *)
+  | Thought of thought_summary (* 思考过程 *)
+  | LoopDetected of string     (* 循环检测 *)
+  | Error of string
 
 (* 消息 *)
 type message = {
-  role: string;  (* "user" | "model" *)
+  role: string;  (* "user" | "assistant" | "system" *)
   content: string;
+  events: event_type list;  (* 消息包含的事件 *)
+  timestamp: float;
 }
 
 (* 对话历史 *)
 type conversation = message list
 
+(* 循环检测状态 - 基于 gemini-cli 的三种检测方式 *)
+type loop_state = {
+  recent_tool_calls: string list;   (* 最近的工具调用 *)
+  recent_content: string list;      (* 最近的内容片段 *)
+  tool_loop_count: int;             (* 工具循环计数 *)
+  content_loop_count: int;          (* 内容循环计数 *)
+}
+
+(* 继续判断状态 *)
+type continuation_state = 
+  | UserSpeaksNext      (* 用户发言 *)
+  | AssistantContinues  (* 助手继续 *)
+  | Finished            (* 对话结束 *)
+
 (* API 响应 *)
 type response = 
-  | Success of string
+  | Success of message
   | Error of string
 ```
 
-### 2. 动词（核心操作）
+#### 2. 动词（核心操作）
 ```ocaml
-(* 配置管理 *)
-val load_config : unit -> config
+(* 事件解析和处理 *)
+val parse_response : string -> event_type list  (* 解析 API 响应为事件列表 *)
+val parse_thought : string -> thought_summary option  (* 解析思考内容 *)
+val format_events : event_type list -> string
 
-(* API 交互 *)
-val send_message : config -> conversation -> string -> response Lwt.t
+(* 循环检测 - 基于 gemini-cli 的三层检测 *)
+val detect_tool_loop : loop_state -> string -> bool * loop_state
+val detect_content_loop : loop_state -> string -> bool * loop_state
+val detect_cognitive_loop : config -> conversation -> bool Lwt.t  (* LLM 检测 *)
+val break_loop : conversation -> string  (* 生成打破循环的提示 *)
+
+(* 继续判断 - 基于 nextSpeakerChecker 逻辑 *)
+val determine_next_speaker : config -> conversation -> continuation_state Lwt.t
+val should_assistant_continue : message -> bool
 
 (* 对话管理 *)
 val add_message : conversation -> message -> conversation
-val format_prompt : conversation -> string
+val build_prompt : conversation -> config -> string
+val compress_conversation : config -> conversation -> conversation Lwt.t  (* 上下文压缩 *)
 
-(* 用户交互 *)
-val read_input : unit -> string option
-val print_response : string -> unit
+(* 事件处理 *)
+val process_event_stream : string -> event_type list  (* 流式事件处理 *)
+val handle_thought : thought_summary -> unit
+val handle_content : string -> unit
 ```
 
-### 3. 引擎（核心循环）
+#### 3. 引擎（核心循环）
 ```ocaml
-(* 主循环：读取输入 -> 调用 API -> 显示结果 -> 更新历史 *)
-let rec chat_loop config conversation =
-  match read_input () with
-  | None | Some "exit" | Some "quit" -> ()
-  | Some input ->
-      let conv = add_message conversation (create_user_message input) in
-      let%lwt response = send_message config conv input in
+(* 主循环：事件驱动的对话管理 *)
+let rec chat_loop config conversation loop_state =
+  (* 智能判断下一个发言者 *)
+  let%lwt next_speaker = determine_next_speaker config conversation in
+  match next_speaker with
+  
+  | UserSpeaksNext ->
+      (* 等待用户输入 *)
+      begin match read_input () with
+      | None | Some "exit" | Some "quit" -> Lwt.return ()
+      | Some input ->
+          let user_msg = create_user_message input in
+          let new_conv = add_message conversation user_msg in
+          chat_loop config new_conv loop_state
+      end
+      
+  | AssistantContinues ->
+      (* AI 生成响应 *)
+      let%lwt response = send_message config conversation in
       match response with
-      | Success text ->
-          print_response text;
-          let conv = add_message conv (create_model_message text) in
-          chat_loop config conv
+      | Success msg ->
+          (* 处理事件流 *)
+          List.iter (function
+            | Thought thought -> handle_thought thought
+            | Content content -> handle_content content
+            | ToolCallRequest req -> (* Phase 2 处理 *)
+            | ToolCallResponse resp -> (* Phase 2 处理 *)
+            | LoopDetected reason -> Printf.printf "Loop detected: %s\n" reason
+            | Error err -> Printf.printf "Error: %s\n" err
+          ) msg.events;
+          
+          (* 多层循环检测 *)
+          let content = String.concat " " (List.map format_events msg.events) in
+          let%lwt cognitive_loop = detect_cognitive_loop config conversation in
+          let tool_loop, new_loop_state1 = detect_tool_loop loop_state content in
+          let content_loop, new_loop_state2 = detect_content_loop new_loop_state1 content in
+          
+          if cognitive_loop || tool_loop || content_loop then
+            (* 注入循环中断消息 *)
+            let break_msg = create_system_message (break_loop conversation) in
+            let conv_with_break = add_message conversation break_msg in
+            chat_loop config conv_with_break new_loop_state2
+          else
+            (* 正常流程继续 *)
+            let new_conv = add_message conversation msg in
+            chat_loop config new_conv new_loop_state2
+            
       | Error err ->
-          print_error err;
-          chat_loop config conversation
+          Printf.printf "API Error: %s\n" err;
+          chat_loop config conversation loop_state
+          
+  | Finished ->
+      (* 对话自然结束 *)
+      Lwt.return ()
+
+(* 流式事件处理辅助函数 *)
+let process_streaming_response config conversation callback =
+  let%lwt response_stream = send_message_stream config conversation in
+  Lwt_stream.iter_s (fun chunk ->
+    let events = process_event_stream chunk in
+    List.iter callback events;
+    Lwt.return ()
+  ) response_stream
 ```
 
-### 4. 点火钥匙（启动入口）
+### Phase 2: 工具系统
+
+#### 1. 新增名词
 ```ocaml
-(* bin/main.ml *)
-let () =
-  let config = load_config () in
-  print_welcome ();
-  Lwt_main.run (chat_loop config [])
+(* 工具定义 *)
+type tool = 
+  | Grep of { pattern: string; path: string option }
+  | Find of { name: string; path: string }
+  | Ls of { path: string }
+  | ReadFile of { path: string }
+  | WriteFile of { path: string; content: string }
+  | Patch of { file: string; patch: string }
+  | FixPatch of { file: string; patch: string }
+
+(* 工具结果 *)
+type tool_result = 
+  | ToolSuccess of string
+  | ToolError of string
+
+(* 扩展动作类型 *)
+type action = 
+  | Plan of string list
+  | Act of string
+  | Think of string
+  | UseTool of tool  (* 新增 *)
 ```
 
-### MVP 实现优先级
-1. **第一步**：定义数据结构（名词）
-2. **第二步**：实现配置加载（最简单的动词）
-3. **第三步**：实现 API 客户端（核心动词）
-4. **第四步**：实现交互循环（引擎）
-5. **第五步**：组装并运行（点火）
+#### 2. 新增动词
+```ocaml
+(* 工具执行 *)
+val execute_tool : tool -> tool_result Lwt.t
 
-### MVP 不包含
-- 工具调用系统
-- 流式输出
-- 复杂 UI
-- 会话持久化
-- 多模型支持
+(* 工具相关 *)
+val parse_tool_request : string -> tool option
+val format_tool_result : tool_result -> string
+
+(* 具体工具实现 *)
+val grep : pattern:string -> ?path:string -> unit -> string Lwt.t
+val find : name:string -> path:string -> string list Lwt.t
+val ls : path:string -> string list Lwt.t
+val read_file : path:string -> string Lwt.t
+val write_file : path:string -> content:string -> unit Lwt.t
+val apply_patch : file:string -> patch:string -> unit Lwt.t
+val fix_patch : file:string -> patch:string -> string Lwt.t
+```
+
+### 实现优先级
+
+#### Phase 1 (事件驱动对话引擎) - TODO List
+
+- [ ] **1. 项目初始化**
+  - [ ] 创建 dune-project 文件
+  - [ ] 创建基本目录结构 (bin/, lib/)
+  - [ ] 配置 .gitignore 和 .ocamlformat
+  - [ ] 添加必要依赖：cohttp-lwt, yojson, lwt, re
+
+- [ ] **2. 核心数据结构** (lib/types.ml)
+  - [ ] 定义 config 类型（包含 enable_thinking）
+  - [ ] 定义 thought_summary 类型
+  - [ ] 定义 event_type 变体类型（Content, Thought, ToolCall 等）
+  - [ ] 定义 message 类型（包含 events 和 timestamp）
+  - [ ] 定义 conversation 和 loop_state 类型
+  - [ ] 定义 continuation_state 类型
+
+- [ ] **3. 配置管理** (lib/config.ml)
+  - [ ] 实现 load_config 函数（环境变量 + 默认值）
+  - [ ] 支持 thinking 模式配置
+  - [ ] 添加配置验证和错误处理
+
+- [ ] **4. 事件解析器** (lib/event_parser.ml)
+  - [ ] 实现 parse_response 解析 API 响应为事件列表
+  - [ ] 实现 parse_thought 解析思考内容（**主题** 描述格式）
+  - [ ] 实现 process_event_stream 流式事件处理
+  - [ ] 实现 format_events 格式化事件输出
+
+- [ ] **5. API 客户端** (lib/api_client.ml)
+  - [ ] 实现 HTTP 请求基础设施（Cohttp-lwt）
+  - [ ] 支持 Gemini 2.5 thinking 模式（thinkingConfig）
+  - [ ] 实现 send_message 和 send_message_stream
+  - [ ] 实现流式响应处理
+  - [ ] 添加错误处理和重试逻辑
+
+- [ ] **6. 循环检测系统** (lib/loop_detector.ml)
+  - [ ] 实现 detect_tool_loop（工具调用循环检测）
+  - [ ] 实现 detect_content_loop（内容循环检测）
+  - [ ] 实现 detect_cognitive_loop（LLM 认知循环检测）
+  - [ ] 实现 break_loop 生成循环中断提示
+  - [ ] 管理多层循环状态
+
+- [ ] **7. 智能对话控制** (lib/conversation.ml)
+  - [ ] 实现 determine_next_speaker（基于 LLM 的智能判断）
+  - [ ] 实现 should_assistant_continue 
+  - [ ] 实现 add_message 和 build_prompt
+  - [ ] 实现 compress_conversation 上下文压缩
+
+- [ ] **8. 事件处理器** (lib/event_handler.ml)
+  - [ ] 实现 handle_thought 思考显示
+  - [ ] 实现 handle_content 内容显示  
+  - [ ] 实现 handle_error 错误处理
+  - [ ] 设计可扩展的事件处理架构
+
+- [ ] **9. 用户界面** (lib/ui.ml)
+  - [ ] 实现 read_input 用户输入处理
+  - [ ] 实现实时事件显示（思考过程、内容生成）
+  - [ ] 实现 print_welcome 和状态指示器
+  - [ ] 支持 Ctrl+C 优雅退出
+
+- [ ] **10. 主程序引擎** (bin/main.ml)
+  - [ ] 实现事件驱动的 chat_loop
+  - [ ] 集成多层循环检测
+  - [ ] 集成智能对话控制
+  - [ ] 添加信号处理和清理逻辑
+
+- [ ] **11. 测试与验证**
+  - [ ] 单元测试：事件解析、循环检测
+  - [ ] 集成测试：端到端对话流程
+  - [ ] 测试 thinking 模式解析
+  - [ ] 测试智能对话继续判断
+  - [ ] 压力测试：长对话和循环场景
+
+#### Phase 2 (工具系统)
+1. 工具类型定义
+2. 工具解析器
+3. 基础文件操作工具（ls, read, write）
+4. 搜索工具（grep, find）
+5. 补丁工具（patch, fix_patch）
+6. 工具调用整合到主循环
 
 ## 开发原则
 1. **循序渐进，小步快跑**：每次只实现一个小功能，确保可编译运行
 2. **持续构建**：每个步骤都通过 `dune build` 和 `dune exec` 验证
 3. **模块化设计**：遵循 OCaml 最佳实践，保持代码清晰可维护
 
+## Event_Type 系统概述
+
+事件系统将复杂的AI交互（思考过程、工具调用、流式输出、错误恢复、循环检测）分解为可管理的原子事件。
+
+### 核心设计
+
+```ocaml
+(* 主要事件类型 *)
+type event_type = 
+  | Content of string                (* 文本内容 *)
+  | Thought of thought_summary       (* AI思考过程 *)
+  | ToolCallRequest of tool_call_info (* 工具调用请求 *)
+  | ToolCallResponse of tool_result   (* 工具执行结果 *)
+  | LoopDetected of string           (* 循环检测 *)
+  | Error of string                  (* 错误信息 *)
+
+(* 事件处理流程：解析 -> 派发 -> 处理 -> 显示 *)
+val parse_response : string -> event_type list
+val dispatch_event : event_type -> unit Lwt.t
+val handle_event : event_type -> unit Lwt.t
+```
+
+### 关键特性
+
+1. **实时处理**：流式解析API响应，即时显示思考和内容
+2. **优雅错误处理**：可恢复的错误分类和用户友好提示
+3. **工具调用管理**：状态跟踪、用户确认、并发执行
+4. **循环检测**：三层检测机制防止AI陷入无限循环
+5. **事件优先级**：错误 > 循环检测 > 工具调用 > 思考/内容
+
 ## MVP 技术栈
 - **构建系统**：Dune
 - **HTTP 客户端**：Cohttp-lwt（用于调用 Gemini API）
 - **JSON 处理**：Yojson（解析 API 响应）
 - **异步处理**：Lwt（处理 HTTP 请求）
+- **事件处理**：自定义事件系统（参考上述设计）
 
 ## 项目结构
 ```
