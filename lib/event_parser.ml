@@ -1,14 +1,23 @@
 open Types
 
-(** Parse thought content in **Subject** Description format *)
+(** Parse thought content in **Subject** Description format or numbered steps *)
 let parse_thought text =
+  (* First try **Subject** Description format *)
   let thought_pattern = Re.Perl.compile_pat {|\*\*(.*?)\*\*(.*)|} in
   match Re.exec_opt thought_pattern text with
   | Some result ->
       let subject = String.trim (Re.Group.get result 1) in
       let description = String.trim (Re.Group.get result 2) in
       Some { subject; description }
-  | None -> None
+  | None ->
+      (* Try numbered step format like "1. step description" *)
+      let step_pattern = Re.Perl.compile_pat {|^(\d+)\.\s+(.+)|} in
+      match Re.exec_opt step_pattern text with
+      | Some result ->
+          let step_num = String.trim (Re.Group.get result 1) in
+          let description = String.trim (Re.Group.get result 2) in
+          Some { subject = "Step " ^ step_num; description }
+      | None -> None
 
 (** Parse API response text into events *)
 let parse_response text =

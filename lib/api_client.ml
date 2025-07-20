@@ -2,8 +2,8 @@ open Lwt.Syntax
 open Types
 
 (** Build JSON request for Gemini API *)
-let build_request_json text =
-  `Assoc [
+let build_request_json text config =
+  let base_request = [
     ("contents", `List [
       `Assoc [
         ("parts", `List [
@@ -11,7 +11,17 @@ let build_request_json text =
         ])
       ]
     ])
-  ]
+  ] in
+  
+  if config.enable_thinking then
+    let generation_config = ("generationConfig", `Assoc [
+      ("thinkingConfig", `Assoc [
+        ("thinkingBudget", `Int 20000)  (* Enable thinking with budget *)
+      ])
+    ]) in
+    `Assoc (base_request @ [generation_config])
+  else
+    `Assoc base_request
 
 (** Send HTTP request to Gemini API *)
 let send_http_request config json_body =
@@ -29,7 +39,7 @@ let send_http_request config json_body =
   let* result = Lwt_process.pread ("sh", [| "sh"; "-c"; cmd |]) in
   Lwt.return result
 
-(** Parse Gemini API response *)
+(** Parse Gemini API response with thinking support *)
 let parse_api_response response_text =
   try
     let json = Yojson.Safe.from_string response_text in
@@ -39,20 +49,47 @@ let parse_api_response response_text =
         | Some (`List [candidate]) ->
             (match candidate with
             | `Assoc candidate_fields ->
-                (match List.assoc_opt "content" candidate_fields with
-                | Some (`Assoc content_fields) ->
-                    (match List.assoc_opt "parts" content_fields with
-                    | Some (`List parts) ->
-                        let texts = List.filter_map (function
-                          | `Assoc part_fields ->
-                              (match List.assoc_opt "text" part_fields with
-                              | Some (`String text) -> Some text
-                              | _ -> None)
-                          | _ -> None
-                        ) parts in
-                        String.concat "\n" texts
-                    | _ -> "Error: No parts in response")
-                | _ -> "Error: No content in response")
+                (* Extract thinking parts if present *)
+                let thinking_text = 
+                  match List.assoc_opt "thinking" candidate_fields with
+                  | Some (`Assoc thinking_fields) ->
+                      (match List.assoc_opt "parts" thinking_fields with
+                      | Some (`List thinking_parts) ->
+                          let thinking_texts = List.filter_map (function
+                            | `Assoc part_fields ->
+                                (match List.assoc_opt "text" part_fields with
+                                | Some (`String text) -> Some text
+                                | _ -> None)
+                            | _ -> None
+                          ) thinking_parts in
+                          Some (String.concat "\n" thinking_texts)
+                      | _ -> None)
+                  | _ -> None
+                in
+                
+                (* Extract main content *)
+                let content_text =
+                  match List.assoc_opt "content" candidate_fields with
+                  | Some (`Assoc content_fields) ->
+                      (match List.assoc_opt "parts" content_fields with
+                      | Some (`List parts) ->
+                          let texts = List.filter_map (function
+                            | `Assoc part_fields ->
+                                (match List.assoc_opt "text" part_fields with
+                                | Some (`String text) -> Some text
+                                | _ -> None)
+                            | _ -> None
+                          ) parts in
+                          String.concat "\n" texts
+                      | _ -> "Error: No parts in content")
+                  | _ -> "Error: No content in response"
+                in
+                
+                (* Combine thinking and content *)
+                (match thinking_text with
+                | Some thinking -> thinking ^ "\n---\n" ^ content_text
+                | None -> content_text)
+                
             | _ -> "Error: Invalid candidate format")
         | _ -> "Error: No candidates in response")
     | _ -> "Error: Invalid JSON response format"
@@ -68,10 +105,10 @@ let send_message config conversation =
     | _ -> "Hello"
   in
   
-  let json_body = build_request_json last_message in
+  let json_body = build_request_json last_message config in
   let* response_text = send_http_request config json_body in
   
-  Printf.printf "📥 Response: %s\n" (String.sub response_text 0 (min 200 (String.length response_text)));
+  Printf.printf "📥 Full Response: %s\n" response_text;
   
   let content = parse_api_response response_text in
   let events = Event_parser.parse_response content in

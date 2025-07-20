@@ -5,7 +5,7 @@ let default_config = {
   api_key = "";
   api_endpoint = "https://generativelanguage.googleapis.com/v1beta/models";
   model = "gemini-2.5-flash";
-  enable_thinking = false;
+  enable_thinking = true;
 }
 
 (** Load API key from environment variable *)
