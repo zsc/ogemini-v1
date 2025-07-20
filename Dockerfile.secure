@@ -1,5 +1,0 @@
-FROM ogemini:latest
-COPY --chown=opam:opam . /ogemini-src
-WORKDIR /ogemini-src  
-RUN eval $(opam env) && dune build
-WORKDIR /workspace
