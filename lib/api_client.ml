@@ -1,18 +1,38 @@
 open Lwt.Syntax
 open Types
 
-(** Build JSON request for Gemini API with tool support *)
+(** Simple heuristic to detect if tools are needed *)
+let needs_tools text =
+  let text_lower = String.lowercase_ascii text in
+  let tool_keywords = [
+    "file"; "read"; "write"; "create"; "build"; "dune"; "shell"; "run"; 
+    "execute"; "compile"; "test"; "directory"; "folder"; "project"
+  ] in
+  List.exists (fun keyword -> 
+    String.length text_lower >= String.length keyword &&
+    try 
+      ignore (Str.search_forward (Str.regexp keyword) text_lower 0); 
+      true 
+    with Not_found -> false
+  ) tool_keywords
+
+(** Build JSON request for Gemini API with optional tool support *)
 let build_request_json text config =
-  let base_request = [
+  let base_content = [
     ("contents", `List [
       `Assoc [
         ("parts", `List [
           `Assoc [("text", `String text)]
         ])
       ]
-    ]);
-    (* Add tool declarations *)
-    ("tools", `List [
+    ])
+  ] in
+  
+  let base_request = 
+    if needs_tools text then
+      (* Add tool declarations for complex tasks *)
+      base_content @ [
+      ("tools", `List [
       `Assoc [
         ("function_declarations", `List [
           (* Read file tool *)
@@ -121,8 +141,11 @@ let build_request_json text config =
           ]
         ])
       ]
-    ])
-  ] in
+    ])]
+    else
+      (* Simple request without tools for basic Q&A *)
+      base_content
+  in
   
   if config.enable_thinking then
     let generation_config = ("generationConfig", `Assoc [
