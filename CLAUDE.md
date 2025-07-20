@@ -309,7 +309,7 @@ source .env && dune exec ./bin/main.exe
 2. 工具解析器
 3. 基础文件操作工具（ls, read, write）
 4. 搜索工具（grep, find）
-5. 补丁工具（patch, fix_patch）
+5. 补丁工具（patch, `git apply --recount`, fix_patch）
 6. 工具调用整合到主循环
 
 ## 开发原则
