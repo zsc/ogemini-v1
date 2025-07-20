@@ -6,7 +6,7 @@
 我们希望用 OCaml 重写 Gemini-cli，作为后续扩展的基础。
 不需要兼容 Gemini-cli。先出一个能运行的 MVP。
 
-**📅 当前状态**: Phase 3.1 完成 - Docker 安全环境 + 智能工具检测！全面回归测试通过！
+**📅 当前状态**: Phase 3.1 完成 - Docker 安全环境 + 智能工具检测！基础工具调用能力验证。需要 Phase 4 实现真正自主 Agent。
 
 ## ✅ 系统健康状态 - 已验证工作正常！
 
@@ -19,6 +19,24 @@
 - **目录映射**：使用 `-v "$(pwd):/ogemini-src"` 映射源码，`--env-file .env` 加载环境
 - **构建方式**：使用 `dune exec bin/main.exe` 确保容器内新鲜编译，避免二进制兼容性问题
 - **工作模式**：基于 `ogemini-base:latest` 镜像，实时编译运行
+
+### 🧮 基础工具调用能力验证 - ✅ 部分成功
+
+**测试场景**：使用 `toy_projects/ocaml_2048` 进行工具调用和项目操作测试
+
+**实际发现**：OGemini 当前处于**受控工具执行模式**，需要人工引导
+- ✅ **工具响应**：能正确响应明确的工具调用指令
+- ✅ **文件操作**：read_file, write_file, shell, dune_build 等工具正常工作
+- ✅ **错误处理**：能发现编译错误并在指导下修复
+- ⚠️ **自主性限制**：需要逐步明确指令，缺乏自主规划和执行能力
+
+**当前限制**：
+- 📋 **非自主操作**：需要人工分解任务为具体步骤（"创建 dune-project"，"创建 lib/ 目录"）
+- 📋 **缺乏规划**：无法自主规划复杂任务的执行步骤
+- 📋 **无认知循环**：未实现持续思考-行动-评估的自主循环
+- 📋 **路径依赖**：工具调用路径处理需要明确引导（相对路径 vs 绝对路径）
+
+**需要实现真正的自主 Agent 能力** → 见 Phase 4 规划
 
 ### 🧪 完整回归测试套件
 每当进行重大代码更改后，**必须**运行这些测试以确保核心功能正常：
@@ -34,6 +52,25 @@
 ✅ Basic Q&A: Working  
 ✅ Tool system: Working
 ✅ API integration: Working
+```
+
+#### 🧮 基础工具调用测试
+```bash
+# 工具调用能力测试 - 验证受控模式下的工具执行
+echo "Hi! I want to work on the OCaml 2048 project. Can you read GEMINI.md and create the project?" | \
+docker run --rm -i \
+  -v "$(pwd):/ogemini-src" \
+  -v "$(pwd)/toy_projects/ocaml_2048:/workspace" \
+  -v "$(pwd)/.env:/workspace/.env:ro" \
+  -w /workspace --env-file .env \
+  -e https_proxy=http://192.168.3.196:7890 \
+  -e http_proxy=http://192.168.3.196:7890 \
+  -e all_proxy=socks5://192.168.3.196:7890 \
+  ogemini-base:latest \
+  bash -c "cd /ogemini-src && eval \$(opam env) && cd /workspace && /ogemini-src/_build/default/bin/main.exe"
+
+# 实际结果：需要逐步指导才能完成项目创建
+# 限制：缺乏自主规划和持续执行能力
 ```
 
 #### 1. 基础Q&A测试（无工具）
@@ -1317,4 +1354,161 @@ MOCK_MODE=replay dune runtest
 - 录制回放核心功能
 - 测试集成和文档
 
-Phase 3.1 的成功完成为 OGemini Agent 提供了安全隔离的执行环境，现在可以安全地进行各种文件操作和代码生成任务，为 Phase 3.2 的确定性测试系统奠定了坚实基础。
+Phase 3.1 的成功完成为 OGemini Agent 提供了安全隔离的执行环境，但测试显示当前仍为**受控工具执行模式**，需要 Phase 4 实现真正的自主 Agent 能力。
+
+## Phase 4: 自主 Agent 认知架构
+
+### 核心问题分析
+
+当前 OGemini 的限制对比 gemini-cli 的自主能力：
+
+**当前状态（受控模式）**：
+- 🔧 工具调用：响应明确指令，执行单个工具调用
+- 📋 任务规划：无，需要人工分解为步骤
+- 🔄 持续性：单轮对话，无持续执行概念
+- 🤔 认知循环：无，仅反应式响应
+
+**目标状态（自主模式）**：
+- 🎯 目标理解：从高级需求推导具体执行计划
+- 🔄 认知循环：思考→规划→执行→评估→调整
+- 🛠️ 工具编排：自主选择和组合多个工具调用
+- 📈 持续改进：根据执行结果调整策略
+
+### Phase 4.1: 核心认知循环实现
+
+基于 gemini-cli 的 `CoreToolScheduler` 和对话管理分析：
+
+#### 1. 认知状态机 (lib/cognitive_engine.ml)
+```ocaml
+(* 基于 gemini-cli 的 TurnState 和 ConversationManager *)
+type cognitive_state = 
+  | Planning of { goal: string; context: string list }
+  | Executing of { plan: action list; current_step: int }
+  | Evaluating of { results: tool_result list; success: bool }
+  | Adjusting of { failures: string list; new_plan: action list }
+  | Completed of { summary: string }
+
+type action = 
+  | ToolCall of { name: string; args: (string * string) list; rationale: string }
+  | Wait of { reason: string; duration: float }
+  | UserInteraction of { prompt: string; expected_response: string }
+
+(* 核心认知循环 - 对应 gemini-cli 的对话管理循环 *)
+val cognitive_loop : cognitive_state -> conversation -> cognitive_state Lwt.t
+val plan_from_goal : string -> string list -> action list Lwt.t
+val evaluate_results : action list -> tool_result list -> bool * string list
+```
+
+#### 2. 自主工具编排 (lib/tool_orchestrator.ml)
+```ocaml
+(* 基于 gemini-cli 的工具调度和并发执行 *)
+type execution_strategy = 
+  | Sequential of action list
+  | Parallel of action list  
+  | Conditional of { 
+      condition: tool_result -> bool; 
+      if_true: action list; 
+      if_false: action list 
+    }
+
+(* 对应 gemini-cli 的 CoreToolScheduler.schedule *)
+val execute_strategy : execution_strategy -> Lwt_unix.signal -> tool_result list Lwt.t
+val adaptive_retry : action -> tool_result -> action option Lwt.t
+```
+
+#### 3. 持续对话管理 (lib/conversation_manager.ml)
+```ocaml
+(* 基于 gemini-cli 的 ConversationManager 和 nextSpeakerChecker *)
+type conversation_mode = 
+  | UserDriven     (* 等待用户指令 *)
+  | AgentDriven    (* 自主执行任务 *)
+  | Collaborative  (* 交互式合作 *)
+
+val determine_conversation_mode : conversation -> string -> conversation_mode Lwt.t
+val should_continue_autonomously : cognitive_state -> conversation -> bool Lwt.t
+val generate_status_update : cognitive_state -> string
+```
+
+### Phase 4.2: 高级自主能力
+
+#### 1. 上下文感知规划
+```ocaml
+(* 项目上下文理解 - 类似 gemini-cli 的项目感知 *)
+val analyze_project_context : string -> project_context Lwt.t
+val infer_user_intent : string -> conversation -> user_intent Lwt.t
+val generate_execution_plan : user_intent -> project_context -> execution_plan Lwt.t
+```
+
+#### 2. 错误处理和自适应
+```ocaml
+(* 基于 gemini-cli 的错误恢复和重试机制 *)
+type failure_mode = 
+  | ToolExecutionFailure of { tool: string; error: string }
+  | PlanningFailure of { reason: string }
+  | UserExpectationMismatch of { expected: string; actual: string }
+
+val diagnose_failure : tool_result list -> failure_mode list
+val adapt_strategy : failure_mode list -> execution_plan -> execution_plan Lwt.t
+```
+
+#### 3. 学习和优化
+```ocaml
+(* 任务执行模式学习 *)
+val extract_execution_patterns : conversation list -> execution_pattern list
+val optimize_tool_usage : execution_pattern list -> tool_optimization list
+val update_planning_heuristics : execution_result list -> unit
+```
+
+### Phase 4.3: 自主模式测试场景
+
+#### 测试 1: 高级项目请求
+```
+用户: "帮我用 OCaml 实现一个高效的 2048 游戏，要求位运算优化"
+
+期望的自主行为:
+1. 🤔 分析: 理解项目需求和技术约束
+2. 📋 规划: 制定项目结构和实现策略
+3. 🔍 探索: 自主搜索现有代码和参考资料
+4. 🏗️ 实现: 创建项目结构和核心代码
+5. ✅ 验证: 构建测试和错误修复
+6. 📊 报告: 总结实现和提供使用指南
+```
+
+#### 测试 2: 复杂错误恢复
+```
+场景: OCaml 编译错误
+
+期望的自主行为:
+1. 🔍 诊断: 分析编译错误类型和原因
+2. 📚 研究: 查阅相关文档和解决方案
+3. 🔧 修复: 尝试多种修复策略
+4. ✅ 验证: 重新构建确认修复效果
+5. 📝 学习: 记录模式以避免重复错误
+```
+
+### Phase 4.4: 实现策略
+
+#### 1. 渐进式自主性
+- **4.1.1**: 基础认知循环（规划→执行→评估）
+- **4.1.2**: 多步骤任务自主执行
+- **4.1.3**: 错误恢复和策略调整
+
+#### 2. gemini-cli 架构对齐
+- **ConversationManager**: 对话状态和模式管理
+- **CoreToolScheduler**: 工具调度和并发执行
+- **nextSpeakerChecker**: 自主继续判断逻辑
+- **LoopDetector**: 认知循环检测和中断
+
+#### 3. 验证标准
+```ocaml
+type autonomy_level = 
+  | Reactive      (* 当前: 响应明确指令 *)
+  | Planned       (* 目标: 自主规划多步骤 *)
+  | Adaptive      (* 高级: 错误恢复和学习 *)
+  | Creative      (* 终极: 创新解决方案 *)
+```
+
+**Phase 4 成功标准**: 
+- 用户提供高级目标，OGemini 自主完成整个项目开发周期
+- 无需微观管理，仅需确认关键决策点
+- 具备错误诊断、恢复和学习能力
