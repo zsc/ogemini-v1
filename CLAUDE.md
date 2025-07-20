@@ -747,7 +747,91 @@ val list_files : string -> simple_tool_result Lwt.t
 4. **事件集成** - 与现有事件系统整合
 5. **测试验证** - 使用 toy_projects/ocaml_2048/ 进行测试
 
-#### Phase 2.2: 完整工具系统 - 🔮 未来目标
+#### Phase 2.2: 智能工具调用序列 - 🎯 下一目标
+
+**设计理念**: 实现复杂的工具调用序列，支持错误分析和自动修复
+
+##### 核心序列：Build -> Analyze -> Patch -> Fix
+
+基于 gemini-cli 的 editCorrector.ts 设计模式，实现完整的自动化修复流程：
+
+```
+1. dune build (构建工具)
+2. 如果失败 -> LLM 分析错误消息
+3. LLM 生成补丁文件 
+4. patch 工具尝试应用补丁
+5. 如果失败 -> LLM 分析失败原因并生成新补丁
+6. 重复直到成功或达到最大尝试次数
+```
+
+##### 1. 构建分析工具 (lib/tools/build_tools.ml)
+```ocaml
+(* 构建工具 *)
+val dune_build : string -> simple_tool_result Lwt.t
+val parse_build_errors : string -> build_error list
+val format_error_for_llm : build_error list -> string
+
+(* 构建错误类型 *)
+type build_error = {
+  file_path: string;
+  line: int option;
+  column: int option; 
+  error_type: string;
+  message: string;
+  context: string option;
+}
+```
+
+##### 2. 补丁生成和应用 (lib/tools/patch_tools.ml)
+```ocaml
+(* 补丁工具 *)
+val generate_patch_file : string -> string -> string -> simple_tool_result Lwt.t
+val apply_patch : string -> simple_tool_result Lwt.t
+val validate_patch : string -> bool
+
+(* 补丁类型 *)
+type patch_operation = 
+  | Replace of { file: string; old_content: string; new_content: string }
+  | Insert of { file: string; line: int; content: string }
+  | Delete of { file: string; line_start: int; line_end: int }
+```
+
+##### 3. LLM 错误分析器 (lib/tools/error_analyzer.ml)
+```ocaml
+(* LLM 分析工具 *)
+val analyze_build_errors : build_error list -> string Lwt.t
+val generate_fix_patch : build_error list -> string -> patch_operation list Lwt.t
+val analyze_patch_failure : string -> string -> string Lwt.t
+
+(* 分析提示词模板 *)
+val build_error_analysis_prompt : build_error list -> string
+val patch_generation_prompt : build_error list -> string -> string  
+val patch_failure_analysis_prompt : string -> string -> string
+```
+
+##### 4. 工具调用序列编排器 (lib/tools/sequence_executor.ml)
+```ocaml
+(* 序列执行器 *)
+type tool_sequence = tool_call list
+type sequence_state = {
+  current_step: int;
+  max_attempts: int;
+  errors: string list;
+  patches_attempted: string list;
+}
+
+val execute_build_fix_sequence : config -> sequence_state Lwt.t
+val retry_with_llm_help : sequence_state -> sequence_state Lwt.t
+```
+
+##### 5. 实现优先级
+1. **构建工具** - dune build 集成和错误解析
+2. **补丁系统** - 生成和应用 patch 文件  
+3. **LLM 分析器** - 错误分析和修复建议
+4. **序列编排** - 完整的自动修复流程
+5. **错误恢复** - 失败重试和迭代修复
+
+#### Phase 2.3: 完整工具系统 - 🔮 未来目标
 
 **设计理念**: 完全对齐 gemini-cli 架构，支持所有高级功能
 
@@ -766,10 +850,10 @@ val list_files : string -> simple_tool_result Lwt.t
 - **安全性**: 完整的路径验证和权限检查
 
 ##### 3. 实现子阶段
-- **Phase 2.2.1**: 核心接口和状态机
-- **Phase 2.2.2**: 确认系统和编辑器集成
-- **Phase 2.2.3**: 高级工具（shell, grep）
-- **Phase 2.2.4**: 性能优化和错误处理
+- **Phase 2.3.1**: 核心接口和状态机
+- **Phase 2.3.2**: 确认系统和编辑器集成
+- **Phase 2.3.3**: 高级工具（shell, grep）
+- **Phase 2.3.4**: 性能优化和错误处理
 
 ### 当前策略：专注 Phase 2.1
 
