@@ -338,6 +338,26 @@ source .env && dune exec ./bin/main.exe
 - 清晰的确认流程
 - 完整的错误处理
 
+### Phase 2.2 工作进展
+
+**设计更新** - 基于 gemini-cli 真实架构分析：
+- ✅ 确认工具调用为独立事件（非序列）
+- ✅ 添加 shell 执行工具（安全白名单）
+- ✅ 添加构建工具（dune_build, dune_test, dune_clean）
+- ✅ 修复 JSON 解析中的 shell 转义问题
+- ✅ 增强状态消息（"🤔 Thinking...", "🔧 Processing..."）
+
+**实现状态**：
+- ✅ Shell 工具（安全命令白名单）
+- ✅ 构建工具（dune 集成）  
+- ✅ API 集成（所有新工具已添加到 function_declarations）
+- ✅ JSON 解析修复（使用临时文件避免转义问题）
+- ✅ 增强错误处理和用户反馈
+
+**待验证**：
+- 🔄 在 toy_projects/ocaml_2048 中实际测试完整工作流程
+- 🔄 确认代理能正确创建和构建 OCaml 项目
+
 ### Phase 2+ 长期功能
 - [ ] 循环检测系统 (lib/loop_detector.ml)
 - [ ] 智能对话控制 (lib/conversation.ml)  
@@ -978,27 +998,54 @@ val handle_event : event_type -> unit Lwt.t
 - **异步处理**：Lwt（处理 HTTP 请求）
 - **事件处理**：自定义事件系统（参考上述设计）
 
-## 项目结构
+## 项目结构和导航
 ```
-ogemini/
-├── dune-project          # Dune 项目配置
-├── .env                  # API 密钥配置
-├── .gitignore           # Git 忽略文件
-├── .ocamlformat         # OCaml 格式化配置
-├── bin/
-│   ├── dune            # 可执行文件构建配置
-│   └── main.ml         # 程序入口点
-├── lib/
-│   ├── dune            # 库构建配置
-│   ├── types.ml        # 核心数据类型定义
-│   ├── config.ml       # 配置管理模块
-│   ├── event_parser.ml # 事件解析和格式化
-│   ├── api_client.ml   # Gemini API 客户端
-│   └── ui.ml           # 用户界面和交互
-├── ref_docs/
-│   └── call_gemini.md  # API 调用参考文档
-├── gemini-cli/         # 原始 TypeScript 实现（参考）
-└── CLAUDE.md           # 项目文档
+🏠 /Users/zsc/Downloads/ogemini/  ← ROOT DIRECTORY (工作目录)
+├── 📄 .env                      ← API 密钥配置
+├── 📄 CLAUDE.md                 ← 项目文档 (本文件)
+├── 📄 dune-project              ← Dune 项目配置
+├── 📁 bin/                      
+│   ├── dune
+│   └── main.ml                  ← 程序入口点
+├── 📁 lib/                      ← 核心库
+│   ├── types.ml                 ← 数据类型
+│   ├── config.ml                ← 配置管理
+│   ├── event_parser.ml          ← 事件解析
+│   ├── api_client.ml            ← API 客户端
+│   ├── ui.ml                    ← 用户界面
+│   └── tools/                   ← Phase 2.2 工具
+│       ├── file_tools.ml        ← 文件操作工具
+│       ├── shell_tools.ml       ← Shell 执行工具 ✨
+│       └── build_tools.ml       ← 构建工具 ✨
+├── 📁 toy_projects/             ← 测试项目
+│   └── ocaml_2048/              ← 2048 游戏项目 (测试 Phase 2.2)
+│       ├── GEMINI.md            ← 项目目标
+│       └── game.py              ← Python 源码
+└── 📁 gemini-cli/               ← 参考实现
+
+🚀 执行命令 (从 ROOT 执行):
+- dune build                     ← 构建项目
+- dune exec ./bin/main.exe       ← 运行 OGemini
+- source .env && dune exec ./bin/main.exe  ← 带环境变量运行
+
+🎯 测试 Phase 2.2 (从 ROOT 执行):
+cd toy_projects/ocaml_2048 && source ../../.env && ../../_build/default/bin/main.exe
+
+⚠️  IMPORTANT BASH TIPS: 
+- Always add 'cd -' at the end of bash commands that change directories to return to original location.
+  Example: cd some/path && do_something && cd -
+- On macOS, use 'gtimeout' instead of 'timeout' (install with: brew install coreutils)
+- For better diagnosis, agent should emit intermediate status during long operations
+- **PATH CONFUSION FIX**: Prefix all bash commands with "cd /Users/zsc/Downloads/ogemini" to ensure proper directory
+  Example: cd /Users/zsc/Downloads/ogemini && dune build
+
+📝 PROMPT GUIDANCE:
+- For effective prompts, refer to gemini-cli/prompts.md for examples and patterns
+- Core system prompt shows best practices for tool usage and user interaction
+- Use specific, direct instructions rather than vague requests
+
+🐍 PYTHON NOTE:
+- Use '/usr/bin/env python' not 'python3' (python is actually python3.11 on this system and is good, but python3 is something without proper libs)
 ```
 
 ## 后续扩展方向

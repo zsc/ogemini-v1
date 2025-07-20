@@ -63,6 +63,61 @@ let build_request_json text config =
               ]);
               ("required", `List [])
             ])
+          ];
+          (* Shell command tool *)
+          `Assoc [
+            ("name", `String "shell");
+            ("description", `String "Execute safe shell commands. Only whitelisted commands are allowed (ls, cat, git, dune, etc). Dangerous commands like rm, sudo are blocked.");
+            ("parameters", `Assoc [
+              ("type", `String "object");
+              ("properties", `Assoc [
+                ("command", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "The shell command to execute (must be from safe whitelist)")
+                ])
+              ]);
+              ("required", `List [`String "command"])
+            ])
+          ];
+          (* Dune build tool *)
+          `Assoc [
+            ("name", `String "dune_build");
+            ("description", `String "Build OCaml projects using dune. Can specify optional target.");
+            ("parameters", `Assoc [
+              ("type", `String "object");
+              ("properties", `Assoc [
+                ("target", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "Optional build target (e.g., './bin/main.exe')")
+                ])
+              ]);
+              ("required", `List [])
+            ])
+          ];
+          (* Dune test tool *)
+          `Assoc [
+            ("name", `String "dune_test");
+            ("description", `String "Run tests using dune. Can specify optional target.");
+            ("parameters", `Assoc [
+              ("type", `String "object");
+              ("properties", `Assoc [
+                ("target", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "Optional test target")
+                ])
+              ]);
+              ("required", `List [])
+            ])
+          ];
+          (* Dune clean tool *)
+          `Assoc [
+            ("name", `String "dune_clean");
+            ("description", `String "Clean build artifacts using dune clean. This removes all compiled files.");
+            ("parameters", `Assoc [
+              ("type", `String "object");
+              ("properties", `Assoc []);
+              ("required", `List [])
+            ])
           ]
         ])
       ]
@@ -88,11 +143,17 @@ let send_http_request config json_body =
   Printf.printf "📤 Request: %s\n" (String.sub body_string 0 (min 100 (String.length body_string)));
   
   (* Simple synchronous HTTP call - will be replaced with Cohttp later *)
+  (* Use temporary file to avoid shell escaping issues with JSON *)
+  let temp_file = Filename.temp_file "ogemini_request" ".json" in
+  let* () = Lwt_io.with_file ~mode:Lwt_io.Output temp_file (fun oc -> 
+    Lwt_io.write oc body_string) in
   let cmd = Printf.sprintf 
-    {|curl -s "%s" -H "x-goog-api-key: %s" -H "Content-Type: application/json" -X POST --data-raw '%s'|}
-    uri config.api_key body_string in
+    {|curl -s "%s" -H "x-goog-api-key: %s" -H "Content-Type: application/json" -X POST --data-binary @%s|}
+    uri config.api_key temp_file in
   
   let* result = Lwt_process.pread ("sh", [| "sh"; "-c"; cmd |]) in
+  (* Clean up temp file *)
+  (try Sys.remove temp_file with _ -> ());
   Lwt.return result
 
 (** Parse tool calls from Gemini API response *)

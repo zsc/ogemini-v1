@@ -81,35 +81,6 @@ type response =
   | Success of message
   | Error of string
 
-(** Phase 2.2: Build Tool System Data Structures *)
+(** Phase 2.2: Enhanced Tool System Data Structures *)
 
-(** Build error information *)
-type build_error = {
-  file_path : string;
-  line : int option;
-  column : int option;
-  error_type : string;
-  message : string;
-  context : string option;
-}
-
-(** Patch operation types *)
-type patch_operation =
-  | Replace of { file : string; old_content : string; new_content : string }
-  | Insert of { file : string; line : int; content : string }
-  | Delete of { file : string; line_start : int; line_end : int }
-
-(** Tool sequence state *)
-type sequence_state = {
-  current_step : int;
-  max_attempts : int;
-  errors : string list;
-  patches_attempted : string list;
-}
-
-(** Build result *)
-type build_result = {
-  success : bool;
-  output : string;
-  errors : build_error list;
-}
+(* For now, keeping simple_tool_result and adding timing info via printf *)

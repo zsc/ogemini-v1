@@ -21,6 +21,20 @@ let execute_tool_call tool_call =
   | "list_files" ->
       let dir_path = List.assoc_opt "dir_path" tool_call.args |> Option.value ~default:"." in
       Tools.File_tools.list_files dir_path
+  | "shell" ->
+      let command = List.assoc_opt "command" tool_call.args |> Option.value ~default:"" in
+      if command = "" then
+        Lwt.return { content = ""; success = false; error_msg = Some "Missing command" }
+      else
+        Tools.Shell_tools.execute_shell command
+  | "dune_build" ->
+      let target = List.assoc_opt "target" tool_call.args in
+      Tools.Build_tools.dune_build target
+  | "dune_test" ->
+      let target = List.assoc_opt "target" tool_call.args in
+      Tools.Build_tools.dune_test target
+  | "dune_clean" ->
+      Tools.Build_tools.dune_clean ()
   | _ ->
       Lwt.return { content = ""; success = false; error_msg = Some ("Unknown tool: " ^ tool_call.name) }
 
@@ -39,7 +53,11 @@ let rec process_tool_calls config conversation tool_calls =
       Printf.printf "\n";
       
       (* Check if tool requires confirmation *)
-      if tool_call.name = "write_file" then (
+      let requires_confirmation = match tool_call.name with
+        | "write_file" | "shell" | "dune_clean" -> true
+        | _ -> false
+      in
+      if requires_confirmation then (
         Ui.confirm_tool_execution tool_call >>= fun confirmation ->
         (match confirmation with
         | Approve ->
@@ -82,26 +100,25 @@ let rec chat_loop config conversation =
       let new_conv = Ui.add_message conversation user_msg in
       
       (* Send to API and get response *)
-      Api_client.send_message config new_conv >>= fun response ->
-      
-      (match response with
-      | Success ai_msg ->
-          (* Display AI response *)
-          Ui.handle_events ai_msg.events;
-          let conv_with_ai = Ui.add_message new_conv ai_msg in
-          
-          (* Check for tool calls *)
-          let tool_calls = extract_tool_calls ai_msg.events in
-          if List.length tool_calls > 0 then
-            (* Process tool calls *)
-            process_tool_calls config conv_with_ai tool_calls >>= fun final_conv ->
-            chat_loop config final_conv
-          else
-            (* No tool calls, continue normal conversation *)
-            chat_loop config conv_with_ai
-      | Error err ->
-          Ui.handle_error err;
-          chat_loop config new_conv)
+      Printf.printf "🤔 Thinking...\n";
+      flush_all ();
+      Api_client.send_message config new_conv >>= (function
+        | Success ai_msg ->
+            Ui.handle_events ai_msg.events;
+            let conv_with_ai = Ui.add_message new_conv ai_msg in
+            let tool_calls = extract_tool_calls ai_msg.events in
+            if List.length tool_calls > 0 then (
+              Printf.printf "🔧 Processing %d tool call(s)...\n" (List.length tool_calls);
+              flush_all ();
+              process_tool_calls config conv_with_ai tool_calls >>= fun final_conv ->
+              chat_loop config final_conv
+            ) else (
+              chat_loop config conv_with_ai
+            )
+        | Error err ->
+            Ui.handle_error err;
+            chat_loop config new_conv
+      )
 
 (** Main program *)
 let main () =

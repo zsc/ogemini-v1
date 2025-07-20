@@ -1,4 +1,4 @@
 (library
  (public_name ogemini.tools)
  (name tools)
- (libraries lwt lwt.unix ogemini))
+ (libraries lwt lwt.unix unix ogemini))

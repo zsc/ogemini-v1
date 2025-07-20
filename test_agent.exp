@@ -1,0 +1,29 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+# Start the agent
+spawn bash -c "cd toy_projects/ocaml_2048 && source ../../.env && ../../_build/default/bin/main.exe"
+
+# Wait for the prompt
+expect "👤 You:"
+
+# Send the request
+send "Create OCaml project: write_file dune-project with content '(lang dune 3.0)', write_file hello.ml with hello world code, write_file dune with executable config\r"
+
+# Handle confirmations
+expect {
+    "Do you want to execute this tool? (y/n):" {
+        send "y\r"
+        exp_continue
+    }
+    "👤 You:" {
+        send "exit\r"
+    }
+    timeout {
+        puts "Timeout occurred"
+        exit 1
+    }
+}
+
+expect eof
