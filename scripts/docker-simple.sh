@@ -14,12 +14,24 @@ docker build -t ogemini:latest .
 # Create workspace if it doesn't exist
 mkdir -p workspace
 
-# Run the container with OCaml interpreter
-echo -e "${GREEN}Starting OGemini in Docker (interpreter mode)...${NC}"
+# Create a secure container with copied source (not mounted)
+echo -e "${YELLOW}Building secure OGemini container...${NC}"
+docker build -t ogemini-secure:latest -f- . <<'EOF'
+FROM ogemini:latest
+# Copy source code into container (not mounted)
+COPY --chown=opam:opam . /ogemini-src
+WORKDIR /ogemini-src
+# Build OGemini inside container
+RUN eval $(opam env) && dune build
+# Set working directory to workspace
+WORKDIR /workspace
+EOF
+
+# Run the secure container with only workspace access
+echo -e "${GREEN}Starting OGemini in Docker (secure mode)...${NC}"
 docker run -it --rm \
-  -v "$(pwd):/ogemini" \
   -v "$(pwd)/workspace:/workspace" \
   -v "$(pwd)/.env:/workspace/.env:ro" \
   -w /workspace \
-  ogemini:latest \
-  bash -c "cd /ogemini && eval \$(opam env) && dune exec ./bin/main.exe"
+  ogemini-secure:latest \
+  /ogemini-src/_build/default/bin/main.exe

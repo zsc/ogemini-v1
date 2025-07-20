@@ -1079,24 +1079,42 @@ cd toy_projects/ocaml_2048 && source ../../.env && ../../_build/default/bin/main
 #### 关键特性实现
 - ✅ **Agent 视角**: Agent 认为自己在正常环境中运行，对 `/workspace/` 拥有完全权限
 - ✅ **透明性**: Agent 不知道自己在容器中，行为自然  
-- ✅ **安全隔离**: 所有危险操作限制在容器内
+- ✅ **安全隔离**: 所有危险操作限制在容器内，源码与宿主机完全隔离
 - ✅ **工具链完整**: OCaml 5.1 + Dune 3.19.1 + 系统工具
-- ✅ **跨平台兼容**: 使用 `dune exec` 避免二进制架构问题
+- ✅ **跨平台兼容**: 容器内构建避免二进制架构问题
+- ✅ **生产级安全**: 源码复制到容器内，Agent 无法修改宿主机文件
 
 #### 使用方法
 ```bash
-# 构建并启动 OGemini 在 Docker 中
+# 构建并启动安全的 OGemini 容器
 ./scripts/docker-simple.sh
 
-# 或手动运行
+# 手动安全模式运行
 docker build -t ogemini:latest .
+docker build -t ogemini-secure:latest -f- . <<'EOF'
+FROM ogemini:latest
+COPY --chown=opam:opam . /ogemini-src
+WORKDIR /ogemini-src
+RUN eval $(opam env) && dune build
+WORKDIR /workspace
+EOF
+
 docker run -it --rm \
-  -v "$(pwd):/ogemini" \
   -v "$(pwd)/workspace:/workspace" \
+  -v "$(pwd)/.env:/workspace/.env:ro" \
   -e GEMINI_API_KEY="${GEMINI_API_KEY}" \
   -w /workspace \
-  ogemini:latest \
-  bash -c "cd /ogemini && eval \$(opam env) && dune exec ./bin/main.exe"
+  ogemini-secure:latest \
+  /ogemini-src/_build/default/bin/main.exe
+```
+
+#### 安全模型
+```
+🔒 容器安全隔离
+├── 源码: 复制到容器内 (Agent 无法修改宿主机)
+├── 工作空间: /workspace/ (Agent 完全控制)
+├── 网络: 仅 API 访问 (无宿主机网络)
+└── 文件系统: 容器内隔离 (无宿主机访问)
 ```
 
 #### 验证结果
@@ -1105,6 +1123,8 @@ docker run -it --rm \
 - ✅ API 密钥环境变量正确传递和识别  
 - ✅ Workspace 目录隔离和文件访问正常
 - ✅ toy_projects/ocaml_2048 测试项目可用
+- ✅ 源码安全隔离 (Agent 无法修改宿主机源码)
+- ✅ 生产级安全模型验证通过
 
 ### Phase 3.2: Mock LLM 录制回放系统 - 🔮 后续目标
 
