@@ -50,15 +50,20 @@ Generate a complete dune-project file for a %s.
 Project description: %s
 
 Requirements:
-1. Use OCaml 5.1 or later
-2. Include appropriate dependencies for the project type
-3. Set up proper project metadata
-4. Use modern dune features
+1. Use OCaml 5.1 or later (specify as 5.01)
+2. Use MINIMAL dependencies - prefer NO dependencies for simple projects
+3. Set up basic project metadata only
+4. Use modern dune 3.0+ syntax
 
-For game projects, consider: graphics, arrays, random
-For web projects, consider: lwt, cohttp, yojson
-For libraries, consider: standard library extensions
-For executables, consider: cmdliner for CLI args
+CRITICAL: For hello world or simple executable projects, use NO dependencies at all.
+Do NOT include cmdliner, core, base, or any external dependencies unless absolutely required.
+
+Only add dependencies if the project explicitly needs:
+- Web functionality: then consider lwt, cohttp-lwt-unix
+- JSON parsing: then consider yojson
+- Graphics: then consider graphics
+
+For simple executables, the dune-project should be minimal with no dependencies.
 
 Generate ONLY the dune-project file content, no explanations.
 |} project_info description

@@ -1,6 +1,7 @@
 (** Build and compilation tools *)
 
 open Ogemini.Types
+open Ogemini.Build_error_parser
 
 (** Execute dune build with optional target *)
 let dune_build (target : string option) : simple_tool_result Lwt.t =
@@ -37,10 +38,31 @@ let dune_build (target : string option) : simple_tool_result Lwt.t =
         "Build output:\n" ^ output
       in
       
+      (* Analyze build errors if build failed *)
+      let analysis_output = if not success && output <> "" then (
+        let existing_files = try
+          let files = Sys.readdir (Sys.getcwd ()) |> Array.to_list in
+          List.filter (fun f -> not (String.contains f '/')) files
+        with _ -> []
+        in
+        Printf.printf "🔍 Analyzing build errors...\n";
+        let auto_fix = analyze_build_error output existing_files in
+        match auto_fix with
+        | Some fix_cmd ->
+            Printf.printf "🔧 Attempting auto-fix: %s\n" fix_cmd;
+            let fix_result = Sys.command fix_cmd in
+            if fix_result = 0 then
+              "\n🔧 Auto-fix applied successfully"
+            else
+              "\n❌ Auto-fix failed"
+        | None ->
+            "\n⚠️ Manual fix required"
+      ) else "" in
+      
       Printf.printf "%s Build: %s (%.2fs)\n" 
         (if success then "✅" else "❌") command execution_time;
       
-      Lwt.return { content = formatted_output; success; error_msg = None }
+      Lwt.return { content = formatted_output ^ analysis_output; success; error_msg = None }
     )
     (fun exn ->
       let execution_time = Unix.gettimeofday () -. start_time in
