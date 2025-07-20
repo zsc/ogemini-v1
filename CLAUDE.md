@@ -89,6 +89,33 @@ hello.ml + dune(name main) → dune build → 错误检测 → 自动重命名 �
 - **避免污染**：防止之前测试的生成文件影响新测试结果
 - **可重现性**：每次测试都应该从相同的清洁初始状态开始
 
+🐳 **Docker 架构双重环境**：
+
+**环境1: OGemini Agent 构建环境** (`/ogemini-src`)
+- **目的**：构建 OGemini Agent 本身，解决 macOS ARM vs Linux ARM 兼容性
+- **位置**：`-v "$(pwd):/ogemini-src"` - 映射 OGemini 源码目录  
+- **dune 环境**：完整的 dune-project + lib/ + bin/ 结构
+- **用途**：`cd /ogemini-src && dune exec bin/main_autonomous.exe`
+
+**环境2: 测试项目工作环境** (`/workspace`)  
+- **目的**：为 OGemini Agent 提供干净的项目开发环境
+- **位置**：`-v "/path/to/test/project:/workspace"` - 映射测试项目目录
+- **初始状态**：完全干净，只有原始文件（如 game.py, GEMINI.md）
+- **代理职责**：所有项目文件创建、构建、测试都由 Docker 内的 OGemini Agent 负责
+
+🎯 **关键原则**：
+- **严格分离**：Agent 构建环境与测试项目环境完全隔离
+- **验证标准**：测试项目必须在 Docker `/workspace` 环境中完全可构建运行
+- **代理自主性**：Agent 必须从零开始创建完整可构建的项目结构
+- **本地调试限制**：本地执行仅用于最小调试，不能证明 Agent 真实能力
+
+⚠️ **重要经验教训**：OGemini Agent 必须在 Docker 中构建和运行
+- **正确目录映射**：必须从 OGemini 源码目录运行，确保 `-v "$(pwd):/ogemini-src"` 映射正确源码
+- **错误示例**：从 `/workspace` 目录运行会导致映射错误，Agent 无法构建
+- **验证方法**：确保在 Docker 中 `cd /ogemini-src && dune build` 能找到正确的 dune-project
+- **关键发现**：本地 `dune build` 由于 macOS ARM vs Linux ARM 差异不可靠，必须依赖 Docker 构建
+- **调试技巧**：使用 `docker run ... ls -la` 验证目录映射是否正确
+
 ### 🐳 Docker 容器化部署状态 - ✅ 生产就绪
 
 **关键配置发现**：

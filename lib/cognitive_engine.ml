@@ -14,6 +14,9 @@ GOAL: %s
 CONTEXT:
 - %s
 
+WORKING DIRECTORY: /workspace
+Use relative file paths (e.g., "hello.ml", "dune") or absolute paths starting with /workspace/
+
 Please create a concrete execution plan using ONLY these available tools:
 - list_files (dir_path) - List files in a directory
 - read_file (file_path) - Read a file's contents  
@@ -28,6 +31,7 @@ Generate a numbered list of steps. Each step should be one line and follow this 
 2. [TOOL: read_file] Read README.md to understand project
 3. [TOOL: write_file] Create hello.ml with OCaml code
 
+IMPORTANT: Use relative file paths like "hello.ml" NOT absolute paths like "/app/hello.ml"
 Keep each step concise and actionable. Focus on tools that will actually help achieve the goal.
 |} goal context_str
 
