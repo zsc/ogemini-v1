@@ -2,6 +2,9 @@
 gemini-cli
 toy_projects
 
+# Docker workspace
+workspace/
+
 # OCaml build artifacts
 _build/
 *.install
