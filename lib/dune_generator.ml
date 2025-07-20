@@ -87,14 +87,18 @@ Existing files: %s
 
 Requirements:
 1. Create appropriate build targets (executable, library, or both)
-2. Include necessary dependencies based on project type
-3. Set up proper module structure
-4. Use modern dune syntax
+2. Use ONLY standard OCaml libraries - NO external dependencies like 'core', 'base', etc.
+3. For simple executables, use NO libraries field or only basic ones like 'unix', 'str'
+4. Set up proper module structure
+5. Use modern dune syntax compatible with OCaml 5.1
 
-For game projects: Consider executable with game logic modules
-For web projects: Consider executable with server modules  
-For libraries: Consider public_name and proper module exposure
-For mixed projects: Consider both library and executable targets
+IMPORTANT: Do not include any external library dependencies unless absolutely necessary.
+For hello world programs, use no dependencies at all.
+
+For game projects: Use basic OCaml modules (no external deps)
+For web projects: Consider lwt, cohttp only if really needed
+For libraries: Use standard library only
+For simple executables: NO dependencies
 
 Generate ONLY the dune file content, no explanations.
 Use proper indentation and modern dune syntax.

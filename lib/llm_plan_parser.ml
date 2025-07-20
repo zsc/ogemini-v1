@@ -72,7 +72,24 @@ let clean_file_path file_path =
 let parse_params_string params_str =
   if String.trim params_str = "" then []
   else
-    let param_pairs = Str.split (Str.regexp ",[ ]*") params_str in
+    (* Split on comma but be careful with quoted strings *)
+    let rec split_params acc current_param in_quotes i =
+      if i >= String.length params_str then
+        if String.trim current_param <> "" then current_param :: acc else acc
+      else
+        let c = String.get params_str i in
+        match c with
+        | '"' -> split_params acc (current_param ^ String.make 1 c) (not in_quotes) (i + 1)
+        | ',' when not in_quotes ->
+            let trimmed = String.trim current_param in
+            if trimmed <> "" then
+              split_params (trimmed :: acc) "" false (i + 1)
+            else
+              split_params acc "" false (i + 1)
+        | _ -> split_params acc (current_param ^ String.make 1 c) in_quotes (i + 1)
+    in
+    let param_pairs = List.rev (split_params [] "" false 0) in
+    Printf.printf "🔍 Split parameters: [%s]\n" (String.concat "; " param_pairs);
     List.filter_map (fun pair ->
       let pair_trimmed = String.trim pair in
       if Str.string_match (Str.regexp "\\([^=]+\\)=\\(.*\\)") pair_trimmed 0 then
@@ -81,13 +98,16 @@ let parse_params_string params_str =
           let value = String.trim (Str.matched_group 2 pair_trimmed) in
           (* Handle None values by converting to empty string *)
           let clean_value = if value = "None" then "" else value in
+          Printf.printf "🔍 Parsed param: %s = '%s'\n" key clean_value;
           Some (key, clean_value)
         with
         | Invalid_argument _ -> 
             Printf.printf "⚠️ Failed to extract matched groups from parameter: %s\n" pair_trimmed;
             None
-      else
+      else (
+        Printf.printf "⚠️ Parameter doesn't match key=value pattern: %s\n" pair_trimmed;
         None
+      )
     ) param_pairs
 
 (** Create action from parsed components *)
