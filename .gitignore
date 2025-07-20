@@ -1,1 +1,22 @@
+.env
 gemini-cli
+
+# OCaml build artifacts
+_build/
+*.install
+*.merlin
+.ocamlinit
+*.cmi
+*.cmo
+*.cmx
+*.o
+*.a
+*.cma
+*.cmxa
+*.cmxs
+
+# OS artifacts
+.DS_Store
+*~
+*.swp
+*.tmp
