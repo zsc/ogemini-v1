@@ -273,12 +273,43 @@ source .env && dune exec ./bin/main.exe
 # 成功启动，支持实时对话
 ```
 
-### 待实现功能（Phase 2+）
+### Phase 2.1 待实现功能 - 简化工具系统
+
+- [ ] **工具数据结构** (lib/types.ml)
+  - [ ] 添加 simple_tool_result, tool_spec, tool_call 类型
+  - [ ] 扩展 event_type 支持工具调用事件
+
+- [ ] **工具解析器** (lib/tools/tool_parser.ml)
+  - [ ] 解析 API 响应中的工具调用请求
+  - [ ] 提取工具名称和参数
+  - [ ] 生成工具调用事件
+
+- [ ] **基础工具实现** (lib/tools/file_tools.ml)
+  - [ ] read_file - 文件读取工具
+  - [ ] write_file - 文件写入工具
+  - [ ] list_files - 目录列表工具
+
+- [ ] **工具执行器** (lib/tools/tool_executor.ml)
+  - [ ] 简单的工具调用分发
+  - [ ] 基础错误处理
+  - [ ] 结果格式化
+
+- [ ] **确认界面** (lib/ui.ml)
+  - [ ] 简单的 Y/N 确认提示
+  - [ ] 工具调用显示
+  - [ ] 结果展示优化
+
+- [ ] **事件系统集成**
+  - [ ] 更新 event_parser.ml 支持工具事件
+  - [ ] 更新 main.ml 的 chat_loop 处理工具调用
+  - [ ] API 请求中包含工具声明
+
+### Phase 2+ 长期功能
 - [ ] 循环检测系统 (lib/loop_detector.ml)
 - [ ] 智能对话控制 (lib/conversation.ml)  
-- [ ] 工具系统集成
 - [ ] 流式输出优化
 - [ ] 上下文压缩
+- [ ] Phase 2.2 完整工具系统
 
 #### Phase 2 (基于 gemini-cli 架构的工具系统) - MVP 规格
 
@@ -615,88 +646,112 @@ end
 type editor_type = VSCode | Vim | Emacs | Nano | System
 ```
 
-### Phase 2 实现优先级（完全重写）
+### Phase 2 实现策略（重新规划）
 
-基于深入分析 gemini-cli 的复杂性，Phase 2 的实现需要分为多个子阶段：
+基于深入分析 gemini-cli 的复杂性，将 Phase 2 拆分为两个阶段：
 
-#### Phase 2.1: 基础工具框架
-1. **JSON Schema 验证器** (lib/validation/schema_validator.ml)
-   - 实现 AJV 兼容的验证逻辑
-   - 类型转换（枚举 → 小写字符串等）
-   - 错误消息格式化
+#### Phase 2.1: 简化工具系统 MVP - 🎯 当前目标
 
-2. **核心工具接口** (lib/tools/tool_interface.ml)
-   - 完整的 base_tool 类定义
-   - tool_result 和 tool_confirmation_details 类型
-   - modifiable_tool 接口
+**设计理念**: 优先可用性，采用最简设计快速实现工具集成
 
-3. **工具注册表** (lib/tools/tool_registry.ml)
-   - 动态工具注册和发现机制
-   - 函数声明生成
-   - 工具查找和管理
+##### 1. 简化数据结构
+```ocaml
+(* 简化的工具结果 *)
+type simple_tool_result = {
+  content: string;                        (* 返回内容 *)
+  success: bool;                          (* 是否成功 *)
+  error_msg: string option;               (* 错误信息 *)
+}
 
-#### Phase 2.2: 基础工具实现
-4. **文件读取工具** (lib/tools/read_file_tool.ml)
-   - 路径验证和安全检查
-   - 二进制文件检测
-   - 分页读取支持
+(* 简化的工具接口 *)
+type tool_spec = {
+  name: string;
+  description: string;
+  parameters: (string * string) list;     (* 参数名和描述 *)
+}
 
-5. **文件写入工具** (lib/tools/write_file_tool.ml)
-   - 差异生成和显示
-   - 内容修正（ensureCorrectEdit）
-   - ModifiableTool 接口实现
+(* 工具调用信息 *)
+type tool_call = {
+  id: string;
+  name: string;
+  args: (string * string) list;           (* 参数键值对 *)
+}
 
-6. **目录列表工具** (lib/tools/ls_tool.ml)
-   - 基础文件系统操作
-   - 无确认需求的简单工具
+(* 简化的确认类型 - 仅支持批准/拒绝 *)
+type simple_confirmation = 
+  | Approve 
+  | Reject
+```
 
-#### Phase 2.3: 复杂工具和确认系统
-7. **Shell 执行工具** (lib/tools/shell_tool.ml)
-   - 命令白名单/黑名单系统
-   - 进程组管理和信号处理
-   - 实时输出流处理
+##### 2. 核心模块设计
+- **lib/tools/simple_tools.ml** - 简化工具接口和注册
+- **lib/tools/file_tools.ml** - read_file, write_file, list_files 三个基础工具
+- **lib/tools/tool_executor.ml** - 简单的工具执行器（无复杂状态机）
+- **lib/tools/tool_parser.ml** - 解析 API 响应中的工具调用
 
-8. **确认系统** (lib/confirmation/confirmation_manager.ml)
-   - 多种确认类型处理
-   - 外部编辑器集成
-   - 临时文件管理
+##### 3. 基础工具实现
+```ocaml
+(* 文件读取 - 无需确认 *)
+val read_file : string -> simple_tool_result Lwt.t
 
-#### Phase 2.4: 工具调度器
-9. **状态机管理** (lib/scheduler/tool_call_state.ml)
-   - 7种状态的完整实现
-   - 状态转换逻辑
-   - 时间跟踪和遥测
+(* 文件写入 - 简单确认 *)
+val write_file : string -> string -> simple_tool_result Lwt.t
 
-10. **核心调度器** (lib/scheduler/tool_scheduler.ml)
-    - 并发工具执行
-    - 生命周期管理
-    - UI 回调集成
+(* 目录列表 - 无需确认 *)
+val list_files : string -> simple_tool_result Lwt.t
+```
 
-#### Phase 2.5: 高级功能
-11. **可修改工具支持** (lib/tools/modifiable_support.ml)
-    - 外部编辑器调用
-    - 差异计算和应用
-    - 临时文件清理
+##### 4. 集成到事件系统
+- 扩展现有 `event_type` 支持工具调用
+- 在 `chat_loop` 中添加工具调用处理
+- 简单的用户确认界面
 
-12. **事件系统集成** (lib/events/tool_events.ml)
-    - ToolCallRequestEvent/ResponseEvent
-    - 与现有事件系统的集成
-    - 流式工具输出支持
+##### 5. 实现优先级
+1. **工具解析器** - 解析 API 响应中的工具调用请求
+2. **基础工具** - 实现三个文件操作工具
+3. **简单确认** - Y/N 确认界面
+4. **事件集成** - 与现有事件系统整合
+5. **测试验证** - 使用 toy_projects/ocaml_2048/ 进行测试
 
-### 技术债务和复杂性评估
+#### Phase 2.2: 完整工具系统 - 🔮 未来目标
 
-**重要警告**: 基于深入分析，gemini-cli 的工具系统比最初预期复杂 3-4 倍：
+**设计理念**: 完全对齐 gemini-cli 架构，支持所有高级功能
 
-1. **确认系统的复杂性**：7种确认结果类型，4种确认详情类型，外部编辑器集成
-2. **状态机管理**：7种状态，每种都有特定的数据结构和转换规则
-3. **安全性要求**：复杂的文件路径验证、命令白名单系统
-4. **ModifiableTool 接口**：临时文件管理、差异计算、编辑器集成
-5. **并发执行**：AbortSignal 传播、实时输出更新、进程管理
+##### 1. 完整架构实现
+- **类系统**: 完整的 base_tool 类和继承体系
+- **状态机**: 7种工具调用状态的完整实现
+- **确认系统**: 7种确认结果类型，4种确认详情类型
+- **注册表**: 动态工具发现和管理
+- **调度器**: 并发执行和生命周期管理
 
-**建议**: 考虑 Phase 2 的替代实现策略：
-- **最小可行工具系统**：只实现 read_file, write_file, ls 三个基础工具
-- **简化确认流程**：只支持 approve/cancel 两种选择
-- **延后高级功能**：ModifiableTool、外部编辑器等功能推迟到 Phase 3+
+##### 2. 高级功能
+- **ModifiableTool 接口**: 外部编辑器集成
+- **Shell 工具**: 命令白名单/黑名单系统
+- **实时输出**: 流式工具输出和更新
+- **错误恢复**: 复杂的错误处理和重试机制
+- **安全性**: 完整的路径验证和权限检查
+
+##### 3. 实现子阶段
+- **Phase 2.2.1**: 核心接口和状态机
+- **Phase 2.2.2**: 确认系统和编辑器集成
+- **Phase 2.2.3**: 高级工具（shell, grep）
+- **Phase 2.2.4**: 性能优化和错误处理
+
+### 当前策略：专注 Phase 2.1
+
+**目标**: 在 1-2 周内实现可用的工具系统，支持基本的文件操作和代码生成场景。
+
+**成功标准**:
+```bash
+👤 You: Read the game.py file and analyze its structure
+🤖 Assistant: [调用 read_file 工具] 
+文件内容显示和分析...
+
+👤 You: Create an OCaml version with similar logic
+🤖 Assistant: [调用 write_file 工具，用户确认]
+✓ 用户批准文件写入
+文件创建成功: game.ml
+```
 
 ### 基于真实架构的使用场景
 
