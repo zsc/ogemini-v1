@@ -52,41 +52,17 @@ let rec process_tool_calls config conversation tool_calls =
   | tool_call :: remaining ->
       Printf.printf "\n";
       
-      (* Check if tool requires confirmation *)
-      let requires_confirmation = match tool_call.name with
-        | "write_file" | "shell" | "dune_clean" -> true
-        | _ -> false
-      in
-      if requires_confirmation then (
-        Ui.confirm_tool_execution tool_call >>= fun confirmation ->
-        (match confirmation with
-        | Approve ->
-            Printf.printf "✅ Executing tool...\n";
-            execute_tool_call tool_call >>= fun result ->
-            let response_event = ToolCallResponse result in
-            Ui.handle_events [response_event];
-            
-            (* Add tool response to conversation *)
-            let tool_msg = Event_parser.create_message "assistant" 
-                          result.content [response_event] in
-            let new_conv = Ui.add_message conversation tool_msg in
-            process_tool_calls config new_conv remaining
-        | Reject ->
-            Printf.printf "❌ Tool execution cancelled by user.\n";
-            process_tool_calls config conversation remaining)
-      ) else (
-        (* Execute without confirmation *)
-        Printf.printf "⚡ Auto-executing safe tool...\n";
-        execute_tool_call tool_call >>= fun result ->
-        let response_event = ToolCallResponse result in
-        Ui.handle_events [response_event];
-        
-        (* Add tool response to conversation *)
-        let tool_msg = Event_parser.create_message "assistant" 
-                      result.content [response_event] in
-        let new_conv = Ui.add_message conversation tool_msg in
-        process_tool_calls config new_conv remaining
-      )
+      (* Auto-execute all tools in secure container *)
+      Printf.printf "⚡ Executing %s...\n" tool_call.name;
+      execute_tool_call tool_call >>= fun result ->
+      let response_event = ToolCallResponse result in
+      Ui.handle_events [response_event];
+      
+      (* Add tool response to conversation *)
+      let tool_msg = Event_parser.create_message "assistant" 
+                    result.content [response_event] in
+      let new_conv = Ui.add_message conversation tool_msg in
+      process_tool_calls config new_conv remaining
 
 (** Enhanced chat loop with tool support *)
 let rec chat_loop config conversation =

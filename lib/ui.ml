@@ -2,8 +2,9 @@ open Types
 
 (** Print welcome message *)
 let print_welcome () =
-  Printf.printf "\n🚀 OGemini - OCaml AI Assistant (Phase 1 MVP)\n";
+  Printf.printf "\n🚀 OGemini - OCaml AI Assistant (Phase 2.2 + Docker)\n";
   Printf.printf "====================================================\n";
+  Printf.printf "🔒 Secure containerized environment with auto tool execution\n";
   Printf.printf "Type your message, or 'exit'/'quit' to exit.\n\n"
 
 (** Read user input *)
