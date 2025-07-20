@@ -43,8 +43,10 @@ let format_events events =
   let format_event = function
     | Content text -> text
     | Thought thought -> Printf.sprintf "💭 %s: %s" thought.subject thought.description
-    | ToolCallRequest req -> Printf.sprintf "🔧 Tool request: %s" req
-    | ToolCallResponse resp -> Printf.sprintf "✅ Tool response: %s" resp
+    | ToolCallRequest tool_call -> 
+        Printf.sprintf "🔧 Tool request: %s" tool_call.name
+    | ToolCallResponse result -> 
+        Printf.sprintf "✅ Tool response: %s" result.content
     | LoopDetected reason -> Printf.sprintf "🔄 Loop detected: %s" reason
     | Error err -> Printf.sprintf "❌ Error: %s" err
   in

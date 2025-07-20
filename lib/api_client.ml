@@ -1,13 +1,69 @@
 open Lwt.Syntax
 open Types
 
-(** Build JSON request for Gemini API *)
+(** Build JSON request for Gemini API with tool support *)
 let build_request_json text config =
   let base_request = [
     ("contents", `List [
       `Assoc [
         ("parts", `List [
           `Assoc [("text", `String text)]
+        ])
+      ]
+    ]);
+    (* Add tool declarations *)
+    ("tools", `List [
+      `Assoc [
+        ("function_declarations", `List [
+          (* Read file tool *)
+          `Assoc [
+            ("name", `String "read_file");
+            ("description", `String "Reads and returns the content of a specified file from the local filesystem. Always use absolute paths.");
+            ("parameters", `Assoc [
+              ("type", `String "object");
+              ("properties", `Assoc [
+                ("file_path", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "The absolute path to the file to read")
+                ])
+              ]);
+              ("required", `List [`String "file_path"])
+            ])
+          ];
+          (* Write file tool *)
+          `Assoc [
+            ("name", `String "write_file");
+            ("description", `String "Writes content to a specified file. Creates directories if needed. Always use absolute paths.");
+            ("parameters", `Assoc [
+              ("type", `String "object");
+              ("properties", `Assoc [
+                ("file_path", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "The absolute path to the file to write")
+                ]);
+                ("content", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "The content to write to the file")
+                ])
+              ]);
+              ("required", `List [`String "file_path"; `String "content"])
+            ])
+          ];
+          (* List files tool *)
+          `Assoc [
+            ("name", `String "list_files");
+            ("description", `String "Lists files and directories in the specified directory. Shows directories with trailing '/'.");
+            ("parameters", `Assoc [
+              ("type", `String "object");
+              ("properties", `Assoc [
+                ("dir_path", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "The directory path to list (defaults to current directory if empty)")
+                ])
+              ]);
+              ("required", `List [])
+            ])
+          ]
         ])
       ]
     ])
@@ -39,7 +95,54 @@ let send_http_request config json_body =
   let* result = Lwt_process.pread ("sh", [| "sh"; "-c"; cmd |]) in
   Lwt.return result
 
-(** Parse Gemini API response with thinking support *)
+(** Parse tool calls from Gemini API response *)
+let parse_tool_calls json =
+  let extract_tool_calls parts =
+    List.filter_map (function
+      | `Assoc part_fields ->
+          (match List.assoc_opt "functionCall" part_fields with
+          | Some (`Assoc func_fields) ->
+              let name = match List.assoc_opt "name" func_fields with
+                | Some (`String n) -> n
+                | _ -> ""
+              in
+              let args = match List.assoc_opt "args" func_fields with
+                | Some (`Assoc arg_fields) ->
+                    List.filter_map (function
+                      | (key, `String value) -> Some (key, value)
+                      | _ -> None
+                    ) arg_fields
+                | _ -> []
+              in
+              if name <> "" then
+                Some { 
+                  id = "tool_" ^ string_of_int (Random.int 1000); 
+                  name; 
+                  args 
+                }
+              else None
+          | _ -> None)
+      | _ -> None
+    ) parts
+  in
+  
+  match json with
+  | `Assoc fields ->
+      (match List.assoc_opt "candidates" fields with
+      | Some (`List [candidate]) ->
+          (match candidate with
+          | `Assoc candidate_fields ->
+              (match List.assoc_opt "content" candidate_fields with
+              | Some (`Assoc content_fields) ->
+                  (match List.assoc_opt "parts" content_fields with
+                  | Some (`List parts) -> extract_tool_calls parts
+                  | _ -> [])
+              | _ -> [])
+          | _ -> [])
+      | _ -> [])
+  | _ -> []
+
+(** Parse Gemini API response with thinking and tool support *)
 let parse_api_response response_text =
   try
     let json = Yojson.Safe.from_string response_text in
@@ -67,6 +170,9 @@ let parse_api_response response_text =
                   | _ -> None
                 in
                 
+                (* Check for tool calls *)
+                let tool_calls = parse_tool_calls json in
+                
                 (* Extract main content *)
                 let content_text =
                   match List.assoc_opt "content" candidate_fields with
@@ -81,21 +187,31 @@ let parse_api_response response_text =
                             | _ -> None
                           ) parts in
                           String.concat "\n" texts
-                      | _ -> "Error: No parts in content")
-                  | _ -> "Error: No content in response"
+                      | _ -> 
+                          if List.length tool_calls > 0 then
+                            (* If we have tool calls but no text, return empty string *)
+                            ""
+                          else "Error: No parts in content")
+                  | _ -> 
+                      if List.length tool_calls > 0 then ""
+                      else "Error: No content in response"
                 in
                 
-                (* Combine thinking and content *)
-                (match thinking_text with
-                | Some thinking -> thinking ^ "\n---\n" ^ content_text
-                | None -> content_text)
+                (* Combine thinking, content, and tool calls *)
+                let full_content = match thinking_text with
+                  | Some thinking -> thinking ^ "\n---\n" ^ content_text
+                  | None -> content_text
+                in
                 
-            | _ -> "Error: Invalid candidate format")
-        | _ -> "Error: No candidates in response")
-    | _ -> "Error: Invalid JSON response format"
+                (* Return tool calls info if present *)
+                (full_content, tool_calls)
+                
+            | _ -> ("Error: Invalid candidate format", []))
+        | _ -> ("Error: No candidates in response", []))
+    | _ -> ("Error: Invalid JSON response format", [])
   with
-  | Yojson.Json_error msg -> Printf.sprintf "JSON parse error: %s" msg
-  | e -> Printf.sprintf "Parse error: %s" (Printexc.to_string e)
+  | Yojson.Json_error msg -> (Printf.sprintf "JSON parse error: %s" msg, [])
+  | e -> (Printf.sprintf "Parse error: %s" (Printexc.to_string e), [])
 
 (** Send message to Gemini API *)
 let send_message config conversation =
@@ -110,8 +226,13 @@ let send_message config conversation =
   
   Printf.printf "📥 Full Response: %s\n" response_text;
   
-  let content = parse_api_response response_text in
-  let events = Event_parser.parse_response content in
-  let message = Event_parser.create_message "assistant" content events in
+  let (content, tool_calls) = parse_api_response response_text in
+  
+  (* Create events from content and tool calls *)
+  let content_events = Event_parser.parse_response content in
+  let tool_events = List.map (fun tc -> ToolCallRequest tc) tool_calls in
+  let all_events = content_events @ tool_events in
+  
+  let message = Event_parser.create_message "assistant" content all_events in
   
   Lwt.return (Success message)

@@ -6,6 +6,8 @@
 我们希望用 OCaml 重写 Gemini-cli，作为后续扩展的基础。
 不需要兼容 Gemini-cli。先出一个能运行的 MVP。
 
+**📅 当前状态**: Phase 2.1 完成 - 简化工具系统成功运行！
+
 ## 参考资源
 - `gemini-cli/` - 包含完整的 TypeScript 源代码实现
 - 分析文档（位于 `gemini-cli/` 目录下）：
@@ -273,36 +275,68 @@ source .env && dune exec ./bin/main.exe
 # 成功启动，支持实时对话
 ```
 
-### Phase 2.1 待实现功能 - 简化工具系统
+### Phase 2.1 完成功能 - 简化工具系统 ✅
 
-- [ ] **工具数据结构** (lib/types.ml)
-  - [ ] 添加 simple_tool_result, tool_spec, tool_call 类型
-  - [ ] 扩展 event_type 支持工具调用事件
+- [x] **工具数据结构** (lib/types.ml)
+  - [x] 添加 simple_tool_result, tool_spec, tool_call 类型
+  - [x] 扩展 event_type 支持工具调用事件
 
-- [ ] **工具解析器** (lib/tools/tool_parser.ml)
-  - [ ] 解析 API 响应中的工具调用请求
-  - [ ] 提取工具名称和参数
-  - [ ] 生成工具调用事件
+- [x] **基础工具实现** (lib/tools/file_tools.ml)
+  - [x] read_file - 文件读取工具（无需确认）
+  - [x] write_file - 文件写入工具（需要确认）
+  - [x] list_files - 目录列表工具（无需确认）
 
-- [ ] **基础工具实现** (lib/tools/file_tools.ml)
-  - [ ] read_file - 文件读取工具
-  - [ ] write_file - 文件写入工具
-  - [ ] list_files - 目录列表工具
+- [x] **工具执行** (bin/main.ml)
+  - [x] 简单的工具调用分发
+  - [x] 基础错误处理和结果格式化
+  - [x] 集成到主循环
 
-- [ ] **工具执行器** (lib/tools/tool_executor.ml)
-  - [ ] 简单的工具调用分发
-  - [ ] 基础错误处理
-  - [ ] 结果格式化
+- [x] **确认界面** (lib/ui.ml)
+  - [x] 简单的 Y/N 确认提示
+  - [x] 工具调用显示
+  - [x] 结果展示优化
 
-- [ ] **确认界面** (lib/ui.ml)
-  - [ ] 简单的 Y/N 确认提示
-  - [ ] 工具调用显示
-  - [ ] 结果展示优化
+- [x] **API 集成** (lib/api_client.ml)
+  - [x] 工具声明发送到 Gemini API
+  - [x] 解析 API 响应中的工具调用
+  - [x] 工具结果处理
 
-- [ ] **事件系统集成**
-  - [ ] 更新 event_parser.ml 支持工具事件
-  - [ ] 更新 main.ml 的 chat_loop 处理工具调用
-  - [ ] API 请求中包含工具声明
+- [x] **事件系统集成**
+  - [x] 更新 event_parser.ml 支持工具事件
+  - [x] 更新 main.ml 的 chat_loop 处理工具调用
+  - [x] 完整的工具调用生命周期
+
+### Phase 2.1 成果总结
+
+🎉 **简化工具系统成功运行！** 实现了完整的工具调用功能：
+
+**✅ 核心功能**
+- Gemini 2.0 Flash API 工具集成
+- 三个基础文件操作工具（read_file, write_file, list_files）
+- 简化的用户确认流程（Y/N）
+- 完整的工具调用解析和执行
+- 实时工具结果显示
+
+**✅ 技术特性**
+- 无 PPX 依赖的简洁实现
+- 类型安全的工具调用系统
+- 异步工具执行（Lwt）
+- JSON 工具调用解析
+- 事件驱动的架构
+
+**✅ 验证结果**
+```bash
+👤 You: Can you list files in the current directory?
+🤖 Assistant: [自动调用 list_files 工具]
+⚡ Auto-executing safe tool...
+✅ Tool result: [显示目录内容]
+```
+
+**✅ 架构设计**
+- 简化的数据结构（避免复杂类系统）
+- 模块化的工具实现
+- 清晰的确认流程
+- 完整的错误处理
 
 ### Phase 2+ 长期功能
 - [ ] 循环检测系统 (lib/loop_detector.ml)

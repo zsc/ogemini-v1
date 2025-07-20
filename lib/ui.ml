@@ -39,13 +39,48 @@ let handle_content content =
 let handle_error error =
   Printf.printf "❌ Error: %s\n\n" error
 
+(** Handle tool call request display *)
+let handle_tool_call_request tool_call =
+  Printf.printf "🔧 Tool call: %s\n" tool_call.name
+
+(** Handle tool call response display *)
+let handle_tool_call_response result =
+  if result.success then
+    Printf.printf "✅ Tool result:\n%s\n\n" result.content
+  else
+    Printf.printf "❌ Tool failed:\n%s\n\n" result.content
+
+(** Show tool confirmation prompt *)
+let confirm_tool_execution (tool_call : tool_call) : simple_confirmation Lwt.t =
+  let description = tool_call.name in
+  Printf.printf "\n🔧 Tool Execution Confirmation\n";
+  Printf.printf "===============================\n";
+  Printf.printf "%s\n\n" description;
+  Printf.printf "Do you want to execute this tool? (y/n): ";
+  flush_all ();
+  
+  let rec get_confirmation () =
+    try
+      let input = read_line () |> String.trim |> String.lowercase_ascii in
+      match input with
+      | "y" | "yes" -> Lwt.return Approve
+      | "n" | "no" -> Lwt.return Reject
+      | _ -> 
+          Printf.printf "Please enter 'y' for yes or 'n' for no: ";
+          flush_all ();
+          get_confirmation ()
+    with
+    | End_of_file -> Lwt.return Reject
+  in
+  get_confirmation ()
+
 (** Process and display events *)
 let handle_events events =
   List.iter (function
     | Content content -> handle_content content
     | Thought thought -> handle_thought thought
-    | ToolCallRequest req -> Printf.printf "🔧 Tool request: %s\n" req
-    | ToolCallResponse resp -> Printf.printf "✅ Tool response: %s\n" resp
+    | ToolCallRequest tool_call -> handle_tool_call_request tool_call
+    | ToolCallResponse result -> handle_tool_call_response result
     | LoopDetected reason -> Printf.printf "🔄 Loop detected: %s\n" reason
     | Error err -> handle_error err
   ) events

@@ -14,11 +14,39 @@ type thought_summary = {
   description : string;
 }
 
+(** Phase 2.1: Simplified Tool System Data Structures *)
+
+(** Simplified tool result *)
+type simple_tool_result = {
+  content : string;                        (* Return content *)
+  success : bool;                          (* Whether successful *)
+  error_msg : string option;               (* Error message if any *)
+}
+
+(** Tool specification *)
+type tool_spec = {
+  name : string;
+  description : string;
+  parameters : (string * string) list;     (* Parameter name and description pairs *)
+}
+
+(** Tool call information *)
+type tool_call = {
+  id : string;
+  name : string;
+  args : (string * string) list;           (* Parameter key-value pairs *)
+}
+
+(** Simplified confirmation type - only approve/reject *)
+type simple_confirmation =
+  | Approve
+  | Reject
+
 (** Event types - corresponds to gemini-cli's event system *)
 type event_type =
   | Content of string
-  | ToolCallRequest of string
-  | ToolCallResponse of string
+  | ToolCallRequest of tool_call
+  | ToolCallResponse of simple_tool_result
   | Thought of thought_summary
   | LoopDetected of string
   | Error of string

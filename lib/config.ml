@@ -4,8 +4,8 @@ open Types
 let default_config = {
   api_key = "";
   api_endpoint = "https://generativelanguage.googleapis.com/v1beta/models";
-  model = "gemini-2.5-flash";
-  enable_thinking = true;
+  model = "gemini-2.0-flash";  (* Use 2.0-flash for faster responses *)
+  enable_thinking = false;     (* Disable thinking for speed *)
 }
 
 (** Load API key from environment variable *)

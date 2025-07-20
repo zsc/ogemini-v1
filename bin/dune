@@ -1,4 +1,4 @@
 (executable
  (public_name ogemini)
  (name main)
- (libraries ogemini lwt.unix))
+ (libraries ogemini tools lwt lwt.unix))
