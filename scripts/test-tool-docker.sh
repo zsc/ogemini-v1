@@ -14,13 +14,30 @@ NC='\033[0m'
 echo -e "${BLUE}🧪 Docker Tool Regression Test${NC}"
 echo "================================================"
 
-echo -e "${YELLOW}Step 1: Checking Docker image availability...${NC}"
-if ! docker images | grep -q "ogemini-secure"; then
-    echo -e "${RED}❌ FAIL: ogemini-secure Docker image not found${NC}"
-    echo "Please build the Docker image first"
+echo -e "${YELLOW}Step 1: Building Docker images with container-internal build...${NC}"
+if ! docker build -t ogemini-base:latest . >/dev/null 2>&1; then
+    echo -e "${RED}❌ FAIL: Base Docker image build failed${NC}"
     exit 1
 fi
-echo -e "${GREEN}✅ Docker image found${NC}"
+
+docker build -t ogemini-built:latest -f- . <<'EOF'
+FROM ogemini-base:latest
+COPY --chown=opam:opam . /ogemini-src
+WORKDIR /ogemini-src
+RUN eval $(opam env) && dune build
+WORKDIR /workspace
+EOF
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ FAIL: Container-internal dune build failed${NC}"
+    exit 1
+fi
+
+# Clean up old ogemini-secure image if it exists  
+echo -e "${YELLOW}Cleaning up old images...${NC}"
+docker image rm ogemini-secure:latest 2>/dev/null || true
+
+echo -e "${GREEN}✅ Docker images built with container-internal build${NC}"
 
 echo -e "${YELLOW}Step 2: Loading environment variables...${NC}"
 if [ ! -f .env ]; then
@@ -36,17 +53,20 @@ echo -e "${GREEN}✅ Environment loaded${NC}"
 
 echo -e "${YELLOW}Step 3: Running Docker container with file listing request...${NC}"
 
-# Run the test in Docker with direct OCaml compilation
+# Create workspace if it doesn't exist
+mkdir -p workspace
+
+# Run the test in Docker using pre-built binary with proxy settings
 OUTPUT=$(echo "List the files in the current directory" | timeout 45 docker run --rm -i \
-  -v "$(pwd):/ogemini-src" \
+  -v "$(pwd)/workspace:/workspace" \
   -v "$(pwd)/.env:/workspace/.env:ro" \
-  -w /ogemini-src \
+  -w /workspace \
   -e https_proxy=http://127.0.0.1:7890 \
   -e http_proxy=http://127.0.0.1:7890 \
   -e all_proxy=socks5://127.0.0.1:7890 \
   -e GEMINI_API_KEY="${GEMINI_API_KEY}" \
-  ogemini-secure:latest \
-  bash -c "eval \$(opam env) && ocamlfind ocamlc -package lwt,lwt.unix,yojson,re,unix,str -linkpkg -I lib lib/types.ml lib/config.ml lib/ui.ml lib/api_client.ml lib/event_parser.ml lib/tools/file_tools.ml lib/tools/shell_tools.ml lib/tools/build_tools.ml bin/main.ml -o main_temp && ./main_temp" 2>&1)
+  ogemini-built:latest \
+  /ogemini-src/_build/default/bin/main.exe 2>&1)
 
 echo -e "${YELLOW}Step 4: Verifying tool detection and execution...${NC}"
 
