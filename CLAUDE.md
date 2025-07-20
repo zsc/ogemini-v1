@@ -1157,6 +1157,9 @@ EOF
 # 清理旧镜像
 docker image rm ogemini-secure:latest 2>/dev/null || true
 
+# Load .env first to get GEMINI_API_KEY
+source .env
+
 docker run -it --rm \
   -v "$(pwd)/workspace:/workspace" \
   -v "$(pwd)/.env:/workspace/.env:ro" \
@@ -1164,9 +1167,30 @@ docker run -it --rm \
   -e https_proxy=http://127.0.0.1:7890 \
   -e http_proxy=http://127.0.0.1:7890 \
   -e all_proxy=socks5://127.0.0.1:7890 \
+  -e GEMINI_API_KEY="${GEMINI_API_KEY}" \
   ogemini-built:latest \
   /ogemini-src/_build/default/bin/main.exe
 ```
+
+#### ⚠️ 重要配置要求
+
+**代理设置 (必须)**:
+- Docker 容器必须设置代理环境变量才能访问 Gemini API
+- 所有 Docker 命令都必须包含完整的代理配置：
+```bash
+-e https_proxy=http://127.0.0.1:7890 \
+-e http_proxy=http://127.0.0.1:7890 \
+-e all_proxy=socks5://127.0.0.1:7890 \
+```
+
+**环境变量 (必须)**:
+- `.env` 文件必须存在并包含 `GEMINI_API_KEY`
+- 必须加载环境变量：`source .env` 
+- 必须传递 API 密钥到容器：`-e GEMINI_API_KEY="${GEMINI_API_KEY}"`
+
+**文件挂载 (必须)**:
+- 工作空间目录：`-v "$(pwd)/workspace:/workspace"`
+- 配置文件：`-v "$(pwd)/.env:/workspace/.env:ro"`
 
 #### 安全模型
 ```

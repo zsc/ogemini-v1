@@ -5,6 +5,7 @@
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 # Build the base image
@@ -31,6 +32,19 @@ EOF
 echo -e "${YELLOW}Cleaning up old images...${NC}"
 docker image rm ogemini-secure:latest 2>/dev/null || true
 
+# Load environment variables
+echo -e "${YELLOW}Loading environment variables...${NC}"
+if [ ! -f .env ]; then
+    echo -e "${RED}❌ FAIL: .env file not found${NC}"
+    exit 1
+fi
+source .env
+if [ -z "$GEMINI_API_KEY" ]; then
+    echo -e "${RED}❌ FAIL: GEMINI_API_KEY not set in .env${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ Environment loaded${NC}"
+
 # Run the built container with only workspace access
 echo -e "${GREEN}Starting OGemini in Docker...${NC}"
 docker run -it --rm \
@@ -40,5 +54,6 @@ docker run -it --rm \
   -e https_proxy=http://127.0.0.1:7890 \
   -e http_proxy=http://127.0.0.1:7890 \
   -e all_proxy=socks5://127.0.0.1:7890 \
+  -e GEMINI_API_KEY="${GEMINI_API_KEY}" \
   ogemini-built:latest \
   /ogemini-src/_build/default/bin/main.exe
