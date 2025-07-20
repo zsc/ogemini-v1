@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  ogemini:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ogemini-env:latest
+    container_name: ogemini-agent
+    
+    # Mount volumes
+    volumes:
+      # Source code (read-only)
+      - .:/ogemini:ro
+      # Workspace for agent (read-write)
+      - ./workspace:/workspace
+      # Share .env file for API keys
+      - ./.env:/workspace/.env:ro
+      
+    # Working directory
+    working_dir: /workspace
+    
+    # Environment variables
+    environment:
+      - TERM=xterm-256color
+      - LANG=C.UTF-8
+      
+    # Keep container running
+    stdin_open: true
+    tty: true
+    
+    # Command to run OGemini
+    command: ["/ogemini/_build/default/bin/main.exe"]
+    
+  # Development container with just bash
+  ogemini-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ogemini-env:latest
+    container_name: ogemini-dev
+    
+    volumes:
+      - .:/ogemini:ro
+      - ./workspace:/workspace
+      - ./.env:/workspace/.env:ro
+      
+    working_dir: /workspace
+    
+    environment:
+      - TERM=xterm-256color
+      - LANG=C.UTF-8
+      
+    stdin_open: true
+    tty: true
+    
+    # Just run bash for development
+    command: ["bash"]

@@ -1,0 +1,10 @@
+# Docker ignore file
+_build/
+.git/
+.gitignore
+workspace/
+*.swp
+*.swo
+.DS_Store
+# Don't copy gemini-cli reference (it's huge)
+gemini-cli/
