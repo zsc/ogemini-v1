@@ -1055,3 +1055,121 @@ cd toy_projects/ocaml_2048 && source ../../.env && ../../_build/default/bin/main
 3. 会话历史管理
 4. 更丰富的 UI
 5. 多模型支持
+
+## Phase 3: 开发基础设施
+
+### Phase 3.1: Docker 虚拟化环境 - 🎯 下一步
+
+**目标**: 为 OGemini Agent 提供安全隔离的执行环境，使其能够自由操作文件系统而不影响宿主机。
+
+#### 设计架构
+```
+宿主机 (macOS)
+├── 用户 (执行 Docker 命令)
+├── OGemini 源码 (/Users/zsc/Downloads/ogemini/)
+└── Docker 容器
+    ├── OGemini Agent (在容器内运行)
+    ├── OCaml 工具链 (dune, ocamlc, opam 等)
+    └── 工作空间目录 (/workspace/)
+        └── Agent 拥有完全读写权限
+```
+
+#### 关键特性
+- **Agent 视角**: Agent 认为自己在正常环境中运行，对 `/workspace/` 拥有完全权限
+- **透明性**: Agent 不知道自己在容器中，行为自然
+- **安全隔离**: 所有危险操作限制在容器内
+- **工具链完整**: 预装 OCaml、Dune、系统工具等
+
+#### 实现方案
+```dockerfile
+FROM ocaml/opam:debian-12-ocaml-5.1
+RUN opam install dune lwt yojson re
+# 其他必要工具和依赖
+WORKDIR /workspace
+```
+
+```bash
+# 运行命令示例
+docker run -it \
+  -v /Users/zsc/Downloads/ogemini:/ogemini:ro \
+  -v /tmp/agent_workspace:/workspace \
+  -w /workspace \
+  ogemini-env \
+  /ogemini/_build/default/bin/main.exe
+```
+
+#### 实现优先级
+1. **Dockerfile 创建** - 基础镜像配置
+2. **工具链安装** - OCaml、Dune、必要系统工具
+3. **挂载配置** - 源码只读挂载，工作区读写挂载
+4. **启动脚本** - 简化 Docker 运行命令
+5. **测试验证** - 使用 toy_projects 验证完整功能
+
+### Phase 3.2: Mock LLM 录制回放系统 - 🔮 后续目标
+
+**目标**: 建立 LLM 交互的录制和回放机制，支持确定性测试和回归测试。
+
+#### 核心功能
+1. **录制模式**
+   - 捕获所有 LLM API 请求和响应
+   - 保存为可重放的测试用例
+   - 记录时间戳和上下文信息
+
+2. **回放模式**
+   - 根据请求匹配返回录制的响应
+   - 支持模糊匹配和精确匹配
+   - 处理工具调用的确定性
+
+3. **测试集成**
+   - 单元测试使用 Mock 响应
+   - 集成测试使用真实录制
+   - CI/CD 中的回归测试
+
+#### 数据结构设计
+```ocaml
+type mock_interaction = {
+  request_hash: string;      (* 请求的唯一标识 *)
+  request: api_request;      (* 完整请求内容 *)
+  response: api_response;    (* 完整响应内容 *)
+  timestamp: float;          (* 录制时间 *)
+  metadata: (string * string) list;  (* 额外信息 *)
+}
+
+type mock_mode = 
+  | Record                   (* 录制真实交互 *)
+  | Replay                   (* 回放录制内容 *)
+  | PassThrough             (* 直接调用真实 API *)
+```
+
+#### 实现策略
+1. **API Client 拦截器** - 在 api_client.ml 添加 Mock 层
+2. **存储格式** - JSON 文件存储交互记录
+3. **匹配算法** - 智能匹配请求和响应
+4. **测试框架** - 集成到现有测试系统
+5. **管理工具** - 录制文件的管理和维护
+
+#### 使用场景
+```bash
+# 录制模式 - 捕获真实交互
+MOCK_MODE=record dune exec ./bin/main.exe
+
+# 回放模式 - 使用录制内容
+MOCK_MODE=replay dune test
+
+# 回归测试 - CI 环境
+MOCK_MODE=replay dune runtest
+```
+
+### 实施计划
+
+**Phase 3.1 (1-2 周)**
+- Docker 环境搭建和测试
+- 解决当前 shell 工具权限问题
+- 完整验证 Phase 2.2 功能
+
+**Phase 3.2 (2-3 周)**  
+- Mock 系统架构设计
+- 录制回放核心功能
+- 测试集成和文档
+
+这两个基础设施改进将大大提升开发效率和测试可靠性，为后续功能开发奠定坚实基础。
