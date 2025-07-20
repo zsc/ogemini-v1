@@ -1,5 +1,6 @@
 .env
 gemini-cli
+toy_projects
 
 # OCaml build artifacts
 _build/

@@ -172,51 +172,27 @@ let process_streaming_response config conversation callback =
   ) response_stream
 ```
 
-### Phase 2: 工具系统
+### Phase 2: 工具系统（已更新 - 见下方新规格）
 
-#### 1. 新增名词
+**注意**: 这个设计已被废弃，请参考下方 "Phase 2 (基于 gemini-cli 架构的工具系统)" 部分的最新规格。
+
+#### 原始简化设计（已废弃）
 ```ocaml
-(* 工具定义 *)
+(* 这个简化设计不符合 gemini-cli 的真实架构 *)
 type tool = 
   | Grep of { pattern: string; path: string option }
-  | Find of { name: string; path: string }
-  | Ls of { path: string }
   | ReadFile of { path: string }
   | WriteFile of { path: string; content: string }
-  | Patch of { file: string; patch: string }
-  | FixPatch of { file: string; patch: string }
 
-(* 工具结果 *)
-type tool_result = 
-  | ToolSuccess of string
-  | ToolError of string
-
-(* 扩展动作类型 *)
-type action = 
-  | Plan of string list
-  | Act of string
-  | Think of string
-  | UseTool of tool  (* 新增 *)
+(* 实际的 gemini-cli 使用面向对象的 Tool 接口和复杂的确认系统 *)
 ```
 
-#### 2. 新增动词
-```ocaml
-(* 工具执行 *)
-val execute_tool : tool -> tool_result Lwt.t
-
-(* 工具相关 *)
-val parse_tool_request : string -> tool option
-val format_tool_result : tool_result -> string
-
-(* 具体工具实现 *)
-val grep : pattern:string -> ?path:string -> unit -> string Lwt.t
-val find : name:string -> path:string -> string list Lwt.t
-val ls : path:string -> string list Lwt.t
-val read_file : path:string -> string Lwt.t
-val write_file : path:string -> content:string -> unit Lwt.t
-val apply_patch : file:string -> patch:string -> unit Lwt.t
-val fix_patch : file:string -> patch:string -> string Lwt.t
-```
+**重要**: gemini-cli 使用了更复杂但更强大的工具架构：
+- 基于接口的工具定义（TypeScript 接口 → OCaml 类）
+- 动态工具注册表系统
+- 复杂的用户确认流程
+- 状态机管理的工具调用生命周期
+- 支持流式输出和中止信号
 
 ### 实现优先级
 
@@ -304,121 +280,484 @@ source .env && dune exec ./bin/main.exe
 - [ ] 流式输出优化
 - [ ] 上下文压缩
 
-#### Phase 2 (项目感知工具系统) - MVP 规格
+#### Phase 2 (基于 gemini-cli 架构的工具系统) - MVP 规格
 
-### 核心工作流程
-OGemini 的典型使用场景：
-1. **项目初始化**：`cd toy_projects/ocaml_2048/` 
-2. **规格驱动**：读取 `GEMINI.md` 了解项目目标
-3. **上下文感知**：分析项目文件结构和现有代码
-4. **迭代开发**：响应用户命令，执行 LLM 推理和文件操作
-5. **保持活跃**：在项目目录内持续工作
+**重要更新**: 基于对 gemini-cli 真实架构的深入分析，Phase 2 规格已完全重写以符合原始实现的设计模式。
 
-### Phase 2 MVP 功能
+### 核心架构对齐
 
-#### 1. 项目上下文管理
+#### 1. 精确的工具接口系统
 ```ocaml
-(* 项目状态 *)
-type project_context = {
-  root_dir: string;                    (* 项目根目录 *)
-  spec_file: string option;            (* GEMINI.md 路径 *)
-  spec_content: string;                (* 项目规格内容 *)
-  file_tree: string list;              (* 文件结构缓存 *)
-  modified_files: string list;         (* 已修改文件列表 *)
+(* 基于深入分析的完整工具接口 *)
+
+(* 工具结果 - 对应 ToolResult *)
+type tool_result = {
+  summary: string option;                    (* 可选的简短摘要 *)
+  llm_content: string;                      (* 给 LLM 的内容 *)
+  return_display: tool_result_display;      (* 用户显示内容 *)
 }
 
-(* 项目感知的工具调用 *)
-type context_aware_tool = 
-  | ReadProjectFile of { path: string }           (* 读取项目文件 *)
-  | WriteProjectFile of { path: string; content: string }  (* 写入项目文件 *)
-  | SearchInProject of { pattern: string; scope: string option }  (* 项目内搜索 *)
-  | AnalyzeProjectStructure                        (* 分析项目结构 *)
-  | LoadProjectSpec                                (* 加载 GEMINI.md *)
+and tool_result_display = 
+  | StringDisplay of string                 (* 简单字符串显示 *)
+  | FileDiffDisplay of {                    (* 文件差异显示 *)
+      file_diff: string;
+      file_name: string;
+      original_content: string option;
+      new_content: string;
+    }
+
+(* 工具位置信息 *)
+type tool_location = {
+  path: string;                            (* 绝对文件路径 *)
+  line: int option;                        (* 可选行号 *)
+}
+
+(* 确认结果枚举 - 对应 ToolConfirmationOutcome *)
+type tool_confirmation_outcome = 
+  | ProceedOnce                            (* 仅此次执行 *)
+  | ProceedAlways                          (* 总是允许此类操作 *)
+  | ProceedAlwaysServer                    (* 总是允许此服务器 *)
+  | ProceedAlwaysTool                      (* 总是允许此工具 *)
+  | ModifyWithEditor                       (* 用编辑器修改 *)
+  | Cancel                                 (* 取消操作 *)
+
+(* 确认载荷 - 用于内联修改 *)
+type tool_confirmation_payload = {
+  new_content: string;                     (* 修改后的内容 *)
+}
+
+(* 工具确认详情 - 完整的确认类型系统 *)
+type tool_confirmation_details = 
+  | EditConfirmation of {
+      title: string;
+      file_name: string;
+      file_diff: string;
+      original_content: string option;
+      new_content: string;
+      is_modifying: bool option;           (* 是否为修改操作 *)
+      on_confirm: tool_confirmation_outcome -> tool_confirmation_payload option -> unit Lwt.t;
+    }
+  | ExecConfirmation of {
+      title: string;
+      command: string;
+      root_command: string;
+      on_confirm: tool_confirmation_outcome -> unit Lwt.t;
+    }
+  | McpConfirmation of {
+      title: string;
+      server_name: string;
+      tool_name: string;
+      tool_display_name: string;
+      on_confirm: tool_confirmation_outcome -> unit Lwt.t;
+    }
+  | InfoConfirmation of {
+      title: string;
+      prompt: string;
+      urls: string list option;
+      on_confirm: tool_confirmation_outcome -> unit Lwt.t;
+    }
+
+(* Icon 枚举 *)
+type icon = 
+  | FileSearch | Folder | Globe | Hammer 
+  | LightBulb | Pencil | Regex | Terminal
+
+(* JSON Schema 类型定义 *)
+type json_schema = {
+  schema_type: string;                     (* "object", "string", etc. *)
+  properties: (string * json_schema) list option;
+  required: string list option;
+  description: string option;
+  items: json_schema option;               (* for arrays *)
+}
+
+(* 函数声明 - 对应 FunctionDeclaration *)
+type function_declaration = {
+  name: string;
+  description: string;
+  parameters: json_schema;
+}
+
+(* 核心工具接口 *)
+class virtual base_tool = object
+  method virtual name : string
+  method virtual display_name : string  
+  method virtual description : string
+  method virtual icon : icon
+  method virtual is_output_markdown : bool
+  method virtual can_update_output : bool
+  method virtual parameter_schema : json_schema
+  
+  (* 计算的属性 *)
+  method schema : function_declaration = {
+    name = self#name;
+    description = self#description;
+    parameters = self#parameter_schema;
+  }
+  
+  (* 核心方法 - 严格对应 gemini-cli *)
+  method virtual validate_tool_params : 'a -> string option
+  method virtual get_description : 'a -> string
+  method virtual tool_locations : 'a -> tool_location list
+  method virtual should_confirm_execute : 'a -> Lwt_unix.signal -> tool_confirmation_details option Lwt.t
+  method virtual execute : 'a -> Lwt_unix.signal -> (string -> unit) option -> tool_result Lwt.t
+end
+
+(* 可修改工具接口 - 对应 ModifiableTool *)
+type 'a modify_context = {
+  get_file_path: 'a -> string;
+  get_current_content: 'a -> string Lwt.t;
+  get_proposed_content: 'a -> string Lwt.t;
+  create_updated_params: string -> string -> 'a -> 'a;
+}
+
+class virtual ['a] modifiable_tool = object
+  inherit base_tool
+  method virtual get_modify_context : Lwt_unix.signal -> 'a modify_context
+end
 ```
 
-#### 2. 增强的工具系统
+#### 2. 工具注册表系统
 ```ocaml
-(* 基础文件操作 - 项目感知 *)
-val read_file : project_context -> string -> string Lwt.t
-val write_file : project_context -> string -> string -> unit Lwt.t
-val ls_project : project_context -> string option -> string list Lwt.t
+(* 动态工具注册表 - 基于 ToolRegistry *)
+module ToolRegistry = struct
+  type t = {
+    tools: (string, base_tool) Hashtbl.t;
+    config: Config.t;
+  }
 
-(* 搜索工具 - 项目范围 *)
-val grep_in_project : project_context -> string -> string option -> string list Lwt.t
-val find_files : project_context -> string -> string list Lwt.t
-
-(* 代码分析工具 *)
-val analyze_code_structure : project_context -> string -> string Lwt.t
-val detect_language : project_context -> string -> string option Lwt.t
+  val create : Config.t -> t
+  val register_tool : t -> base_tool -> unit
+  val discover_tools : t -> unit Lwt.t  (* 动态工具发现 *)
+  val get_function_declarations : t -> function_declaration list
+  val get_all_tools : t -> base_tool list
+  val get_tool : t -> string -> base_tool option
+end
 ```
 
-#### 3. 智能对话增强
+#### 3. 具体工具实现
 ```ocaml
-(* 上下文感知的对话 *)
-val build_context_prompt : project_context -> conversation -> string
-val should_use_project_context : message -> bool
-val extract_file_references : string -> string list  (* 提取 @file 引用 *)
+(* 文件读取工具 - 基于 ReadFileTool *)
+class read_file_tool (config : Config.t) = object
+  inherit base_tool
+  
+  method name = "read_file"
+  method display_name = "ReadFile"
+  method description = "Reads and returns the content of a specified file from the local filesystem"
+  method icon = "fileSearch"
+  method is_output_markdown = true
+  method can_update_output = false
+  
+  method validate_tool_params params =
+    (* 验证路径是绝对路径，在工作目录内，不被忽略等 *)
+    
+  method should_confirm_execute params signal =
+    (* 大多数文件操作不需要确认 *)
+    Lwt.return None
+    
+  method execute params signal update_callback =
+    (* 实际文件读取逻辑 *)
+end
 
-(* 项目状态管理 *)
-val init_project_context : string -> project_context Lwt.t
-val update_project_context : project_context -> string -> project_context
-val save_project_state : project_context -> unit Lwt.t
+(* 文件写入工具 - 基于 WriteFileTool *)  
+class write_file_tool (config : Config.t) = object
+  inherit base_tool
+  
+  method name = "write_file"
+  method should_confirm_execute params signal =
+    (* 写入操作需要用户确认 *)
+    let confirmation = EditConfirmation {
+      title = "Write file";
+      file_name = params.path;
+      file_diff = generate_diff params.path params.content;
+      original_content = read_existing_file params.path;
+      new_content = params.content;
+    } in
+    Lwt.return (Some confirmation)
+end
+
+(* Shell 执行工具 - 基于 ShellTool *)
+class shell_tool (config : Config.t) = object
+  inherit base_tool
+  
+  method name = "shell"
+  method should_confirm_execute params signal =
+    (* Shell 命令需要执行确认 *)
+    let confirmation = ExecConfirmation {
+      title = "Execute command";
+      command = params.command;
+      root_command = extract_root_command params.command;
+    } in
+    Lwt.return (Some confirmation)
+end
+
+(* Grep 搜索工具 - 基于 GrepTool *)
+class grep_tool (config : Config.t) = object
+  inherit base_tool
+  
+  method name = "grep"
+  method execute params signal update_callback =
+    (* 使用 ripgrep 进行搜索 *)
+end
 ```
 
-#### 4. 工作目录支持
+#### 4. 精确的工具调度器系统
 ```ocaml
-(* 启动方式 *)
-let start_with_project dir =
-  let* context = init_project_context dir in
-  match context.spec_file with
-  | Some spec_path ->
-      Printf.printf "📁 Project: %s\n" dir;
-      Printf.printf "📋 Spec: %s\n" spec_path;
-      Printf.printf "🎯 Goal: %s\n" (extract_goal context.spec_content);
-      chat_loop_with_context config [] loop_state context
-  | None ->
-      Printf.printf "⚠️ No GEMINI.md found, starting basic mode\n";
-      chat_loop config [] loop_state
+(* 工具调用请求信息 - 对应 ToolCallRequestInfo *)
+type tool_call_request_info = {
+  call_id: string;
+  name: string;
+  args: Yojson.Safe.t;                     (* JSON 参数 *)
+  is_client_initiated: bool;               (* 是否由客户端发起 *)
+  prompt_id: string option;                (* 关联的提示ID *)
+}
+
+(* 工具调用响应信息 - 对应 ToolCallResponseInfo *)
+type tool_call_response_info = {
+  call_id: string;
+  name: string;
+  result: tool_result;
+  is_error: bool;
+}
+
+(* 批准模式 - 对应 ApprovalMode *)
+type approval_mode = 
+  | AutoEdit                               (* 自动批准编辑操作 *)
+  | Manual                                 (* 手动批准所有操作 *)
+  | Yolo                                   (* 跳过所有批准 *)
+
+(* 工具调用状态 - 精确对应 gemini-cli 的7种状态 *)
+type tool_call_state = 
+  | Validating of {
+      request: tool_call_request_info;
+      tool: base_tool;
+      start_time: float option;
+      outcome: tool_confirmation_outcome option;
+    }
+  | Scheduled of {
+      request: tool_call_request_info;
+      tool: base_tool;
+      start_time: float option;
+      outcome: tool_confirmation_outcome option;
+    }
+  | Executing of {
+      request: tool_call_request_info;
+      tool: base_tool;
+      live_output: string option;
+      start_time: float option;
+      outcome: tool_confirmation_outcome option;
+    }
+  | AwaitingApproval of {
+      request: tool_call_request_info;
+      tool: base_tool;
+      confirmation_details: tool_confirmation_details;
+      start_time: float option;
+      outcome: tool_confirmation_outcome option;
+    }
+  | Successful of {
+      request: tool_call_request_info;
+      tool: base_tool;
+      response: tool_call_response_info;
+      duration_ms: float option;
+      outcome: tool_confirmation_outcome option;
+    }
+  | Errored of {
+      request: tool_call_request_info;
+      response: tool_call_response_info;
+      duration_ms: float option;
+      outcome: tool_confirmation_outcome option;
+    }
+  | Cancelled of {
+      request: tool_call_request_info;
+      tool: base_tool;
+      response: tool_call_response_info;
+      duration_ms: float option;
+      outcome: tool_confirmation_outcome option;
+    }
+
+(* 核心工具调度器 - 对应 CoreToolScheduler *)
+module ToolScheduler = struct
+  type t = {
+    tool_registry: ToolRegistry.t;
+    tool_calls: tool_call_state list ref;
+    approval_mode: approval_mode;
+    on_tool_calls_update: unit -> unit;                    (* UI 更新回调 *)
+    on_all_tool_calls_complete: tool_call_state list -> unit Lwt.t;  (* 完成回调 *)
+  }
+
+  (* 核心调度方法 *)
+  val schedule : t -> tool_call_request_info list -> Lwt_unix.signal -> unit Lwt.t
+  
+  (* 状态转换 *)
+  val set_status_internal : t -> string -> string -> 'a option -> unit
+  
+  (* 执行管理 *)
+  val attempt_execution_of_scheduled_calls : t -> Lwt_unix.signal -> unit Lwt.t
+  
+  (* 确认处理 *)
+  val handle_confirmation_response : 
+    t -> string -> (tool_confirmation_outcome -> unit Lwt.t) -> 
+    tool_confirmation_outcome -> Lwt_unix.signal -> 
+    tool_confirmation_payload option -> unit Lwt.t
+  
+  (* 生命周期管理 *)
+  val check_and_notify_completion : t -> unit
+  val is_running : t -> bool
+  val get_tool_calls : t -> tool_call_state list
+  
+  (* 外部编辑器集成 *)
+  val modify_with_editor : 
+    'a -> 'a modify_context -> editor_type -> Lwt_unix.signal -> 
+    ('a * string) Lwt.t
+end
+
+(* 编辑器类型 *)
+type editor_type = VSCode | Vim | Emacs | Nano | System
 ```
 
-### Phase 2 实现优先级
+### Phase 2 实现优先级（完全重写）
 
-1. **项目上下文管理** (lib/project_context.ml)
-   - 目录扫描和文件树构建
-   - GEMINI.md 解析和缓存
-   - 项目状态持久化
+基于深入分析 gemini-cli 的复杂性，Phase 2 的实现需要分为多个子阶段：
 
-2. **增强工具系统** (lib/tools.ml)
-   - 项目感知的文件操作
-   - 上下文范围的搜索
-   - 代码结构分析
+#### Phase 2.1: 基础工具框架
+1. **JSON Schema 验证器** (lib/validation/schema_validator.ml)
+   - 实现 AJV 兼容的验证逻辑
+   - 类型转换（枚举 → 小写字符串等）
+   - 错误消息格式化
 
-3. **智能提示构建** (lib/context_prompt.ml) 
-   - 自动包含相关文件内容
-   - 项目规格集成
-   - @file 引用解析
+2. **核心工具接口** (lib/tools/tool_interface.ml)
+   - 完整的 base_tool 类定义
+   - tool_result 和 tool_confirmation_details 类型
+   - modifiable_tool 接口
 
-4. **工作流集成** (bin/main.ml)
-   - 命令行参数支持 `ogemini ./toy_projects/ocaml_2048/`
-   - 项目模式 vs 普通模式
-   - 智能文件监控
+3. **工具注册表** (lib/tools/tool_registry.ml)
+   - 动态工具注册和发现机制
+   - 函数声明生成
+   - 工具查找和管理
 
-### 示例使用场景
+#### Phase 2.2: 基础工具实现
+4. **文件读取工具** (lib/tools/read_file_tool.ml)
+   - 路径验证和安全检查
+   - 二进制文件检测
+   - 分页读取支持
+
+5. **文件写入工具** (lib/tools/write_file_tool.ml)
+   - 差异生成和显示
+   - 内容修正（ensureCorrectEdit）
+   - ModifiableTool 接口实现
+
+6. **目录列表工具** (lib/tools/ls_tool.ml)
+   - 基础文件系统操作
+   - 无确认需求的简单工具
+
+#### Phase 2.3: 复杂工具和确认系统
+7. **Shell 执行工具** (lib/tools/shell_tool.ml)
+   - 命令白名单/黑名单系统
+   - 进程组管理和信号处理
+   - 实时输出流处理
+
+8. **确认系统** (lib/confirmation/confirmation_manager.ml)
+   - 多种确认类型处理
+   - 外部编辑器集成
+   - 临时文件管理
+
+#### Phase 2.4: 工具调度器
+9. **状态机管理** (lib/scheduler/tool_call_state.ml)
+   - 7种状态的完整实现
+   - 状态转换逻辑
+   - 时间跟踪和遥测
+
+10. **核心调度器** (lib/scheduler/tool_scheduler.ml)
+    - 并发工具执行
+    - 生命周期管理
+    - UI 回调集成
+
+#### Phase 2.5: 高级功能
+11. **可修改工具支持** (lib/tools/modifiable_support.ml)
+    - 外部编辑器调用
+    - 差异计算和应用
+    - 临时文件清理
+
+12. **事件系统集成** (lib/events/tool_events.ml)
+    - ToolCallRequestEvent/ResponseEvent
+    - 与现有事件系统的集成
+    - 流式工具输出支持
+
+### 技术债务和复杂性评估
+
+**重要警告**: 基于深入分析，gemini-cli 的工具系统比最初预期复杂 3-4 倍：
+
+1. **确认系统的复杂性**：7种确认结果类型，4种确认详情类型，外部编辑器集成
+2. **状态机管理**：7种状态，每种都有特定的数据结构和转换规则
+3. **安全性要求**：复杂的文件路径验证、命令白名单系统
+4. **ModifiableTool 接口**：临时文件管理、差异计算、编辑器集成
+5. **并发执行**：AbortSignal 传播、实时输出更新、进程管理
+
+**建议**: 考虑 Phase 2 的替代实现策略：
+- **最小可行工具系统**：只实现 read_file, write_file, ls 三个基础工具
+- **简化确认流程**：只支持 approve/cancel 两种选择
+- **延后高级功能**：ModifiableTool、外部编辑器等功能推迟到 Phase 3+
+
+### 基于真实架构的使用场景
 
 ```bash
-# 启动项目模式
-cd toy_projects/ocaml_2048
-ogemini .
+# 启动 OGemini
+ogemini
 
-# 或者直接指定项目
-ogemini ./toy_projects/ocaml_2048/
+# 工具集成对话示例
+👤 You: Read the file ./game.py and help me understand the bit operations
+🤖 Assistant: I'll read the file for you.
 
-# 项目内的典型对话
-👤 You: Help me translate the Game2048 class to OCaml
-🤖 Assistant: I can see from GEMINI.md that you want to translate game.py to OCaml with bit-level agreement. Let me analyze the existing Python implementation...
+[工具调用请求] read_file { absolute_path: "/full/path/to/game.py" }
+[工具执行 - 无需确认] 读取文件内容...
+[返回] 文件内容和分析
 
-[自动读取 game.py，分析代码结构，生成 OCaml 版本]
+👤 You: Now create an OCaml version with the same logic
+🤖 Assistant: I'll create the OCaml version for you.
+
+[工具调用请求] write_file { absolute_path: "/full/path/to/game.ml", content: "..." }
+[用户确认] ✓ 文件写入确认框（显示 diff）
+[工具执行] 创建文件...
+[返回] 文件创建成功
 ```
+
+### 关键架构洞察
+
+从 gemini-cli 深入分析中获得的重要发现：
+
+#### 1. 工具接口复杂性远超预期
+- **ModifiableTool 接口**：支持外部编辑器修改工具参数的高级功能
+- **getModifyContext**：提供文件路径、当前内容、建议内容的复杂上下文管理
+- **临时文件系统**：用于diff编辑的完整临时文件管理机制
+
+#### 2. 参数验证的多层架构
+- **JSON Schema 验证**：使用 AJV 库进行标准验证，包含复杂的类型转换逻辑
+- **业务逻辑验证**：路径安全性、权限检查、文件存在性等
+- **命令安全验证**：Shell工具有复杂的白名单/黑名单系统
+
+#### 3. 确认流程的状态管理
+- **ApprovalMode 枚举**：AUTO_EDIT、MANUAL、YOLO 三种模式
+- **ToolConfirmationOutcome 枚举**：7种不同的用户响应类型
+- **动态白名单**：用户批准后的命令会加入会话级白名单
+
+#### 4. 工具调用的完整生命周期
+```
+validating → [shouldConfirmExecute] → awaiting_approval | scheduled 
+→ executing → success | error | cancelled
+```
+- **7种状态**：每种状态都有特定的数据结构和转换规则
+- **时间跟踪**：startTime、durationMs 用于性能监控和遥测
+- **中止处理**：AbortSignal 在所有异步操作中传播
+
+#### 5. 流式输出和实时更新
+- **updateOutput 回调**：支持工具执行期间的实时输出更新（如shell命令）
+- **throttled updates**：限制更新频率避免UI性能问题
+- **输出汇总**：长输出的自动汇总功能
+
+#### 6. 错误处理的分层设计
+- **llmContent vs returnDisplay**：为LLM和用户提供不同的错误信息
+- **结构化错误**：带有错误代码、消息、上下文的完整错误对象
+- **错误恢复**：某些错误情况下的自动重试和修正机制
 
 ### Phase 2 开发和测试环境
 
