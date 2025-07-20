@@ -74,9 +74,9 @@ source .env 2>/dev/null || true
 timeout 120 docker run --rm \
   -v "$(pwd)/workspace:/workspace" \
   -w "/workspace/${TEST_PROJECT}" \
-  -e https_proxy=http://127.0.0.1:7890 \
-  -e http_proxy=http://127.0.0.1:7890 \
-  -e all_proxy=socks5://127.0.0.1:7890 \
+  -e https_proxy=http://192.168.3.196:7890 \
+  -e http_proxy=http://192.168.3.196:7890 \
+  -e all_proxy=socks5://192.168.3.196:7890 \
   -e GEMINI_API_KEY="${GEMINI_API_KEY}" \
   ogemini-secure:latest \
   bash -c "cat /workspace/agent_task.txt | /ogemini-src/_build/default/bin/main.exe" || echo "Agent completed or timed out"

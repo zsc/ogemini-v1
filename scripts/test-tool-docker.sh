@@ -61,9 +61,9 @@ OUTPUT=$(echo "List the files in the current directory" | timeout 45 docker run 
   -v "$(pwd)/workspace:/workspace" \
   -v "$(pwd)/.env:/workspace/.env:ro" \
   -w /workspace \
-  -e https_proxy=http://127.0.0.1:7890 \
-  -e http_proxy=http://127.0.0.1:7890 \
-  -e all_proxy=socks5://127.0.0.1:7890 \
+  -e https_proxy=http://192.168.3.196:7890 \
+  -e http_proxy=http://192.168.3.196:7890 \
+  -e all_proxy=socks5://192.168.3.196:7890 \
   -e GEMINI_API_KEY="${GEMINI_API_KEY}" \
   ogemini-built:latest \
   /ogemini-src/_build/default/bin/main.exe 2>&1)

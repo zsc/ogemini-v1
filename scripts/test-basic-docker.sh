@@ -41,9 +41,9 @@ OUTPUT=$(echo "2+2=?" | timeout 30 docker run --rm -i \
   -v "$(pwd):/ogemini-src" \
   -v "$(pwd)/.env:/workspace/.env:ro" \
   -w /ogemini-src \
-  -e https_proxy=http://127.0.0.1:7890 \
-  -e http_proxy=http://127.0.0.1:7890 \
-  -e all_proxy=socks5://127.0.0.1:7890 \
+  -e https_proxy=http://192.168.3.196:7890 \
+  -e http_proxy=http://192.168.3.196:7890 \
+  -e all_proxy=socks5://192.168.3.196:7890 \
   -e GEMINI_API_KEY="${GEMINI_API_KEY}" \
   ogemini-secure:latest \
   bash -c "eval \$(opam env) && ocamlfind ocamlc -package lwt,lwt.unix,yojson,re,unix,str -linkpkg -I lib lib/types.ml lib/config.ml lib/ui.ml lib/api_client.ml lib/event_parser.ml lib/tools/file_tools.ml lib/tools/shell_tools.ml lib/tools/build_tools.ml bin/main.ml -o main_temp && ./main_temp" 2>&1)

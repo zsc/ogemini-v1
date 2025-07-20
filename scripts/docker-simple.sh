@@ -28,10 +28,6 @@ RUN eval $(opam env) && dune build
 WORKDIR /workspace
 EOF
 
-# Clean up old ogemini-secure image if it exists
-echo -e "${YELLOW}Cleaning up old images...${NC}"
-docker image rm ogemini-secure:latest 2>/dev/null || true
-
 # Load environment variables
 echo -e "${YELLOW}Loading environment variables...${NC}"
 if [ ! -f .env ]; then
@@ -51,9 +47,9 @@ docker run -it --rm \
   -v "$(pwd)/workspace:/workspace" \
   -v "$(pwd)/.env:/workspace/.env:ro" \
   -w /workspace \
-  -e https_proxy=http://127.0.0.1:7890 \
-  -e http_proxy=http://127.0.0.1:7890 \
-  -e all_proxy=socks5://127.0.0.1:7890 \
+  -e https_proxy=http://192.168.3.196:7890 \
+  -e http_proxy=http://192.168.3.196:7890 \
+  -e all_proxy=socks5://192.168.3.196:7890 \
   -e GEMINI_API_KEY="${GEMINI_API_KEY}" \
   ogemini-built:latest \
   /ogemini-src/_build/default/bin/main.exe

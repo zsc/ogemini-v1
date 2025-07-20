@@ -65,9 +65,9 @@ OUTPUT=$(echo "2+2=?" | timeout 30 docker run --rm -i \
   -v "$(pwd)/workspace:/workspace" \
   -v "$(pwd)/.env:/workspace/.env:ro" \
   -w /workspace \
-  -e https_proxy=http://127.0.0.1:7890 \
-  -e http_proxy=http://127.0.0.1:7890 \
-  -e all_proxy=socks5://127.0.0.1:7890 \
+  -e https_proxy=http://192.168.3.196:7890 \
+  -e http_proxy=http://192.168.3.196:7890 \
+  -e all_proxy=socks5://192.168.3.196:7890 \
   ogemini-built:latest \
   /ogemini-src/_build/default/bin/main.exe 2>&1)
 
@@ -85,9 +85,9 @@ TOOL_OUTPUT=$(echo "List the files in the current directory" | timeout 45 docker
   -v "$(pwd)/workspace:/workspace" \
   -v "$(pwd)/.env:/workspace/.env:ro" \
   -w /workspace \
-  -e https_proxy=http://127.0.0.1:7890 \
-  -e http_proxy=http://127.0.0.1:7890 \
-  -e all_proxy=socks5://127.0.0.1:7890 \
+  -e https_proxy=http://192.168.3.196:7890 \
+  -e http_proxy=http://192.168.3.196:7890 \
+  -e all_proxy=socks5://192.168.3.196:7890 \
   ogemini-built:latest \
   /ogemini-src/_build/default/bin/main.exe 2>&1)
 
