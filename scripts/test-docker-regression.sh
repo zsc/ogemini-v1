@@ -21,36 +21,7 @@ if ! docker build -t ogemini-base:latest . >/dev/null 2>&1; then
 fi
 echo -e "${GREEN}✅ Base Docker image built successfully${NC}"
 
-echo -e "${YELLOW}Step 2: Building OGemini with container-internal dune build...${NC}"
-docker build -t ogemini-built:latest -f- . <<'EOF'
-FROM ogemini-base:latest
-COPY --chown=opam:opam . /ogemini-src
-WORKDIR /ogemini-src
-RUN eval $(opam env) && dune build
-WORKDIR /workspace
-EOF
-
-if [ $? -ne 0 ]; then
-    echo -e "${RED}❌ FAIL: Container-internal dune build failed${NC}"
-    exit 1
-fi
-
-# Clean up old ogemini-secure image if it exists
-echo -e "${YELLOW}Cleaning up old images...${NC}"
-docker image rm ogemini-secure:latest 2>/dev/null || true
-
-echo -e "${GREEN}✅ Container-internal dune build succeeded${NC}"
-
-echo -e "${YELLOW}Step 3: Verifying binary exists and is Linux-compatible...${NC}"
-BINARY_CHECK=$(docker run --rm ogemini-built:latest file /ogemini-src/_build/default/bin/main.exe)
-if echo "$BINARY_CHECK" | grep -q "ELF.*Linux"; then
-    echo -e "${GREEN}✅ Binary is Linux ELF format (correct for container)${NC}"
-else
-    echo -e "${RED}❌ FAIL: Binary format unexpected: $BINARY_CHECK${NC}"
-    exit 1
-fi
-
-echo -e "${YELLOW}Step 4: Testing basic Q&A functionality in container...${NC}"
+echo -e "${YELLOW}Step 2: Testing basic Q&A functionality in container...${NC}"
 # Create workspace if it doesn't exist
 mkdir -p workspace
 
@@ -62,14 +33,14 @@ fi
 
 # Test basic math Q&A (no tools)
 OUTPUT=$(echo "2+2=?" | timeout 30 docker run --rm -i \
-  -v "$(pwd)/workspace:/workspace" \
-  -v "$(pwd)/.env:/workspace/.env:ro" \
-  -w /workspace \
+  -v "$(pwd):/ogemini-src" \
+  -v "$(pwd)/.env:/ogemini-src/.env:ro" \
+  -w /ogemini-src --env-file .env \
   -e https_proxy=http://192.168.3.196:7890 \
   -e http_proxy=http://192.168.3.196:7890 \
   -e all_proxy=socks5://192.168.3.196:7890 \
-  ogemini-built:latest \
-  /ogemini-src/_build/default/bin/main.exe 2>&1)
+  ogemini-base:latest \
+  bash -c "eval \$(opam env);dune exec bin/main.exe" 2>&1)
 
 if echo "$OUTPUT" | grep -q "2 + 2 = 4"; then
     echo -e "${GREEN}✅ Basic Q&A working in container${NC}"
@@ -79,17 +50,17 @@ else
     exit 1
 fi
 
-echo -e "${YELLOW}Step 5: Testing tool functionality in container...${NC}"
+echo -e "${YELLOW}Step 3: Testing tool functionality in container...${NC}"
 # Test file listing (requires tools)
 TOOL_OUTPUT=$(echo "List the files in the current directory" | timeout 45 docker run --rm -i \
-  -v "$(pwd)/workspace:/workspace" \
-  -v "$(pwd)/.env:/workspace/.env:ro" \
-  -w /workspace \
+  -v "$(pwd):/ogemini-src" \
+  -v "$(pwd)/.env:/ogemini-src/.env:ro" \
+  -w /ogemini-src --env-file .env \
   -e https_proxy=http://192.168.3.196:7890 \
   -e http_proxy=http://192.168.3.196:7890 \
   -e all_proxy=socks5://192.168.3.196:7890 \
-  ogemini-built:latest \
-  /ogemini-src/_build/default/bin/main.exe 2>&1)
+  ogemini-base:latest \
+  bash -c "eval \$(opam env);dune exec bin/main.exe" 2>&1)
 
 # Check if tools were detected and used
 if echo "$TOOL_OUTPUT" | grep -q "🔧 Tool call: list_files"; then
@@ -108,7 +79,7 @@ else
     exit 1
 fi
 
-echo -e "${YELLOW}Step 6: Verifying API integration in container...${NC}"
+echo -e "${YELLOW}Step 4: Verifying API integration in container...${NC}"
 # Check that API key was loaded
 if echo "$TOOL_OUTPUT" | grep -q "✅ API key loaded:"; then
     echo -e "${GREEN}✅ API key properly loaded in container${NC}"

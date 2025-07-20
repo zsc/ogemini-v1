@@ -6,19 +6,43 @@
 我们希望用 OCaml 重写 Gemini-cli，作为后续扩展的基础。
 不需要兼容 Gemini-cli。先出一个能运行的 MVP。
 
-**📅 当前状态**: Phase 3.1 完成 - Docker 安全环境 + 智能工具检测！
+**📅 当前状态**: Phase 3.1 完成 - Docker 安全环境 + 智能工具检测！全面回归测试通过！
 
 ## ✅ 系统健康状态 - 已验证工作正常！
 
-**重要提醒给未来的维护者**：系统目前完全正常工作，无需担心代理、API密钥或其他配置问题。如果遇到问题，请先运行基础回归测试。
+**重要提醒给未来的维护者**：系统目前完全正常工作，包括 Docker 容器化环境。如果遇到问题，请先运行基础回归测试。
+
+### 🐳 Docker 容器化部署状态 - ✅ 生产就绪
+
+**关键配置发现**：
+- **代理设置**：Docker 容器内必须使用 `192.168.3.196:7890` 而非 `127.0.0.1:7890`
+- **目录映射**：使用 `-v "$(pwd):/ogemini-src"` 映射源码，`--env-file .env` 加载环境
+- **构建方式**：使用 `dune exec bin/main.exe` 确保容器内新鲜编译，避免二进制兼容性问题
+- **工作模式**：基于 `ogemini-base:latest` 镜像，实时编译运行
 
 ### 🧪 完整回归测试套件
 每当进行重大代码更改后，**必须**运行这些测试以确保核心功能正常：
 
+#### 🐳 Docker 容器化回归测试（推荐）
+```bash
+# 完整 Docker 环境回归测试 - 包含构建、Q&A、工具调用
+./scripts/test-docker-regression.sh
+
+# 预期输出：
+🎉 DOCKER CONTAINER BUILD REGRESSION TEST PASSED
+✅ Container build: Working
+✅ Basic Q&A: Working  
+✅ Tool system: Working
+✅ API integration: Working
+```
+
 #### 1. 基础Q&A测试（无工具）
 ```bash
-# 基础功能测试 - 应该返回 "2 + 2 = 4"
+# 本地测试 (仅 macOS 开发环境)
 source .env && echo "2+2=?" | dune exec ./bin/main.exe
+
+# Docker 测试 (推荐用于验证)
+./scripts/test-basic-docker.sh
 
 # 预期输出：
 🤖 Assistant: 2 + 2 = 4
@@ -32,11 +56,14 @@ source .env && echo "2+2=?" | dune exec ./bin/main.exe
 
 #### 2. 工具调用测试（智能检测）
 ```bash
-# 工具功能测试 - 应该使用list_files工具
+# 本地工具测试 (仅 macOS 开发环境)
 ./scripts/test-tool-regression.sh
 
+# Docker 工具测试 (推荐用于验证)
+./scripts/test-tool-docker.sh
+
 # 预期输出：
-🎉 TOOL REGRESSION TEST PASSED
+🎉 DOCKER TOOL REGRESSION TEST PASSED
 ✅ Tool detection: Working
 ✅ Tool execution: Working  
 ✅ File listing: Working
@@ -1077,9 +1104,10 @@ val handle_event : event_type -> unit Lwt.t
 - dune exec ./bin/main.exe       ← 直接运行 (仅 macOS 本地开发)
 
 🧪 回归测试命令:
-- ./scripts/test-docker-regression.sh                     ← Docker 环境回归测试
-- source .env && echo "2+2=?" | dune exec ./bin/main.exe  ← macOS 本地测试
-- ./scripts/test-tool-regression.sh                       ← 工具调用测试
+- ./scripts/test-docker-regression.sh  ← 🐳 完整 Docker 环境回归测试 (推荐)
+- ./scripts/test-basic-docker.sh       ← 🐳 基础 Q&A Docker 测试
+- ./scripts/test-tool-docker.sh        ← 🐳 工具调用 Docker 测试
+- ./scripts/test-tool-regression.sh    ← 本地工具调用测试 (仅 macOS)
 
 🐳 Docker 管理命令:
 - ./scripts/docker-simple.sh    ← 构建并运行 (推荐)
@@ -1092,6 +1120,13 @@ val handle_event : event_type -> unit Lwt.t
 - For better diagnosis, agent should emit intermediate status during long operations
 - **PATH CONFUSION FIX**: Prefix all bash commands with "cd /Users/zsc/Downloads/ogemini" to ensure proper directory
   Example: cd /Users/zsc/Downloads/ogemini && dune build
+
+🐳 DOCKER 配置关键要点:
+- **代理地址**: 容器内必须使用 `192.168.3.196:7890` 不是 `127.0.0.1:7890`
+- **目录映射**: `-v "$(pwd):/ogemini-src"` 映射源码到容器
+- **环境变量**: `--env-file .env` 加载环境，避免手动传递
+- **编译方式**: `dune exec bin/main.exe` 确保容器内新鲜编译
+- **标准命令**: `echo '2+2=?'|docker run --rm -i -v "$(pwd):/ogemini-src" -v "$(pwd)/.env:/ogemini-src/.env:ro" -w /ogemini-src --env-file .env -e https_proxy=http://192.168.3.196:7890 -e http_proxy=http://192.168.3.196:7890 -e all_proxy=socks5://192.168.3.196:7890 ogemini-base:latest bash -c "eval \$(opam env);dune exec bin/main.exe"`
 
 📝 PROMPT GUIDANCE:
 - For effective prompts, refer to gemini-cli/prompts.md for examples and patterns

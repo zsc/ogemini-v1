@@ -56,17 +56,16 @@ echo -e "${YELLOW}Step 3: Running Docker container with file listing request...$
 # Create workspace if it doesn't exist
 mkdir -p workspace
 
-# Run the test in Docker using pre-built binary with proxy settings
+# Run the test in Docker using dune exec with proxy settings
 OUTPUT=$(echo "List the files in the current directory" | timeout 45 docker run --rm -i \
-  -v "$(pwd)/workspace:/workspace" \
-  -v "$(pwd)/.env:/workspace/.env:ro" \
-  -w /workspace \
+  -v "$(pwd):/ogemini-src" \
+  -v "$(pwd)/.env:/ogemini-src/.env:ro" \
+  -w /ogemini-src --env-file .env \
   -e https_proxy=http://192.168.3.196:7890 \
   -e http_proxy=http://192.168.3.196:7890 \
   -e all_proxy=socks5://192.168.3.196:7890 \
-  -e GEMINI_API_KEY="${GEMINI_API_KEY}" \
-  ogemini-built:latest \
-  /ogemini-src/_build/default/bin/main.exe 2>&1)
+  ogemini-base:latest \
+  bash -c "eval \$(opam env);dune exec bin/main.exe" 2>&1)
 
 echo -e "${YELLOW}Step 4: Verifying tool detection and execution...${NC}"
 
