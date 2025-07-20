@@ -11,9 +11,18 @@ let dune_build (target : string option) : simple_tool_result Lwt.t =
     | Some t -> "dune build " ^ t
   in
   
+  (* Determine the correct build directory:
+     If we're in a container with /workspace mounted, use that for building *)
+  let build_dir = 
+    if Sys.file_exists "/workspace" && Sys.is_directory "/workspace" then 
+      "/workspace"
+    else 
+      Sys.getcwd ()
+  in
+  
   Lwt.catch
     (fun () ->
-      let cmd = Printf.sprintf "cd %s && %s 2>&1" (Sys.getcwd ()) command in
+      let cmd = Printf.sprintf "cd %s && %s 2>&1" build_dir command in
       let process = Unix.open_process_in cmd in
       let rec read_output acc =
         try
@@ -41,16 +50,19 @@ let dune_build (target : string option) : simple_tool_result Lwt.t =
       (* Analyze build errors if build failed *)
       let analysis_output = if not success && output <> "" then (
         let existing_files = try
-          let files = Sys.readdir (Sys.getcwd ()) |> Array.to_list in
+          let files = Sys.readdir build_dir |> Array.to_list in
           List.filter (fun f -> not (String.contains f '/')) files
         with _ -> []
         in
+        Printf.printf "🔍 Build directory: %s\n" build_dir;
+        Printf.printf "🔍 Found files: [%s]\n" (String.concat "; " existing_files);
         Printf.printf "🔍 Analyzing build errors...\n";
         let auto_fix = analyze_build_error output existing_files in
         match auto_fix with
         | Some fix_cmd ->
             Printf.printf "🔧 Attempting auto-fix: %s\n" fix_cmd;
-            let fix_result = Sys.command fix_cmd in
+            let full_cmd = Printf.sprintf "cd %s && %s" build_dir fix_cmd in
+            let fix_result = Sys.command full_cmd in
             if fix_result = 0 then
               "\n🔧 Auto-fix applied successfully"
             else
