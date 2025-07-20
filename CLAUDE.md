@@ -304,13 +304,121 @@ source .env && dune exec ./bin/main.exe
 - [ ] 流式输出优化
 - [ ] 上下文压缩
 
-#### Phase 2 (工具系统)
-1. 工具类型定义
-2. 工具解析器
-3. 基础文件操作工具（ls, read, write）
-4. 搜索工具（grep, find）
-5. 补丁工具（patch, `git apply --recount`, fix_patch）
-6. 工具调用整合到主循环
+#### Phase 2 (项目感知工具系统) - MVP 规格
+
+### 核心工作流程
+OGemini 的典型使用场景：
+1. **项目初始化**：`cd toy_projects/ocaml_2048/` 
+2. **规格驱动**：读取 `GEMINI.md` 了解项目目标
+3. **上下文感知**：分析项目文件结构和现有代码
+4. **迭代开发**：响应用户命令，执行 LLM 推理和文件操作
+5. **保持活跃**：在项目目录内持续工作
+
+### Phase 2 MVP 功能
+
+#### 1. 项目上下文管理
+```ocaml
+(* 项目状态 *)
+type project_context = {
+  root_dir: string;                    (* 项目根目录 *)
+  spec_file: string option;            (* GEMINI.md 路径 *)
+  spec_content: string;                (* 项目规格内容 *)
+  file_tree: string list;              (* 文件结构缓存 *)
+  modified_files: string list;         (* 已修改文件列表 *)
+}
+
+(* 项目感知的工具调用 *)
+type context_aware_tool = 
+  | ReadProjectFile of { path: string }           (* 读取项目文件 *)
+  | WriteProjectFile of { path: string; content: string }  (* 写入项目文件 *)
+  | SearchInProject of { pattern: string; scope: string option }  (* 项目内搜索 *)
+  | AnalyzeProjectStructure                        (* 分析项目结构 *)
+  | LoadProjectSpec                                (* 加载 GEMINI.md *)
+```
+
+#### 2. 增强的工具系统
+```ocaml
+(* 基础文件操作 - 项目感知 *)
+val read_file : project_context -> string -> string Lwt.t
+val write_file : project_context -> string -> string -> unit Lwt.t
+val ls_project : project_context -> string option -> string list Lwt.t
+
+(* 搜索工具 - 项目范围 *)
+val grep_in_project : project_context -> string -> string option -> string list Lwt.t
+val find_files : project_context -> string -> string list Lwt.t
+
+(* 代码分析工具 *)
+val analyze_code_structure : project_context -> string -> string Lwt.t
+val detect_language : project_context -> string -> string option Lwt.t
+```
+
+#### 3. 智能对话增强
+```ocaml
+(* 上下文感知的对话 *)
+val build_context_prompt : project_context -> conversation -> string
+val should_use_project_context : message -> bool
+val extract_file_references : string -> string list  (* 提取 @file 引用 *)
+
+(* 项目状态管理 *)
+val init_project_context : string -> project_context Lwt.t
+val update_project_context : project_context -> string -> project_context
+val save_project_state : project_context -> unit Lwt.t
+```
+
+#### 4. 工作目录支持
+```ocaml
+(* 启动方式 *)
+let start_with_project dir =
+  let* context = init_project_context dir in
+  match context.spec_file with
+  | Some spec_path ->
+      Printf.printf "📁 Project: %s\n" dir;
+      Printf.printf "📋 Spec: %s\n" spec_path;
+      Printf.printf "🎯 Goal: %s\n" (extract_goal context.spec_content);
+      chat_loop_with_context config [] loop_state context
+  | None ->
+      Printf.printf "⚠️ No GEMINI.md found, starting basic mode\n";
+      chat_loop config [] loop_state
+```
+
+### Phase 2 实现优先级
+
+1. **项目上下文管理** (lib/project_context.ml)
+   - 目录扫描和文件树构建
+   - GEMINI.md 解析和缓存
+   - 项目状态持久化
+
+2. **增强工具系统** (lib/tools.ml)
+   - 项目感知的文件操作
+   - 上下文范围的搜索
+   - 代码结构分析
+
+3. **智能提示构建** (lib/context_prompt.ml) 
+   - 自动包含相关文件内容
+   - 项目规格集成
+   - @file 引用解析
+
+4. **工作流集成** (bin/main.ml)
+   - 命令行参数支持 `ogemini ./toy_projects/ocaml_2048/`
+   - 项目模式 vs 普通模式
+   - 智能文件监控
+
+### 示例使用场景
+
+```bash
+# 启动项目模式
+cd toy_projects/ocaml_2048
+ogemini .
+
+# 或者直接指定项目
+ogemini ./toy_projects/ocaml_2048/
+
+# 项目内的典型对话
+👤 You: Help me translate the Game2048 class to OCaml
+🤖 Assistant: I can see from GEMINI.md that you want to translate game.py to OCaml with bit-level agreement. Let me analyze the existing Python implementation...
+
+[自动读取 game.py，分析代码结构，生成 OCaml 版本]
+```
 
 ## 开发原则
 1. **循序渐进，小步快跑**：每次只实现一个小功能，确保可编译运行
