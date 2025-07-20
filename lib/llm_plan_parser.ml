@@ -131,56 +131,67 @@ let create_action_from_parsed tool_name params_str rationale =
 (** Parse LLM response to extract tool calls *)
 let parse_llm_extracted_tools llm_response =
   let lines = String.split_on_char '\n' llm_response in
+  Printf.printf "🔍 Parsing %d lines from LLM response\n" (List.length lines);
+  Printf.printf "🔍 First few lines of LLM response:\n";
+  let rec print_preview i = function
+    | [] -> ()
+    | line :: rest when i < 10 -> 
+        Printf.printf "  %d: '%s'\n" i line;
+        print_preview (i+1) rest
+    | _ -> ()
+  in
+  print_preview 0 lines;
   let rec parse_tool_blocks acc current_tool current_params current_rationale = function
     | [] -> 
         (* Process final block if exists *)
-        if current_tool <> "" then
+        if current_tool <> "" then (
+          Printf.printf "🔧 Final block: tool=%s, params=%s\n" current_tool current_params;
           let action = create_action_from_parsed current_tool current_params current_rationale in
           List.rev (action :: acc)
-        else
+        ) else
           List.rev acc
           
     | line :: rest ->
         let line_trim = String.trim line in
         
-        if Str.string_match (Str.regexp "TOOL_CALL:[ ]*\\(.*\\)") line_trim 0 then
+        (* Extract tool name immediately to avoid Str module global state issues *)
+        let tool_regex = Str.regexp "TOOL_CALL:[ ]*\\([a-zA-Z_]+\\).*" in
+        if Str.string_match tool_regex line_trim 0 then (
+          (* Capture tool name immediately before any other Str operations *)
+          let tool_name_raw = Str.matched_group 1 line_trim in
+          let tool_name = String.trim tool_name_raw in
+          
           (* New tool block started, process previous if exists *)
+          Printf.printf "🎯 Found TOOL_CALL line: %s\n" line_trim;
+          Printf.printf "✅ Extracted tool name: '%s' (length: %d)\n" tool_name (String.length tool_name);
+          
           let new_acc = 
-            if current_tool <> "" then
+            if current_tool <> "" then (
+              Printf.printf "🔧 Completing previous tool: %s with params: %s\n" current_tool current_params;
               let action = create_action_from_parsed current_tool current_params current_rationale in
               action :: acc
-            else
+            ) else
               acc
           in
-          (try
-            let tool_name = String.trim (Str.matched_group 1 line_trim) in
-            parse_tool_blocks new_acc tool_name "" "" rest
-          with
-          | Invalid_argument _ ->
-              Printf.printf "⚠️ Error parsing TOOL_CALL line: %s\n" line_trim;
-              parse_tool_blocks new_acc "" "" "" rest)
-          
-        else if Str.string_match (Str.regexp "PARAMS:[ ]*\\(.*\\)") line_trim 0 then
-          (try
+          parse_tool_blocks new_acc tool_name "" "" rest
+        ) else (
+          let params_regex = Str.regexp "PARAMS:[ ]*\\(.*\\)" in
+          let rationale_regex = Str.regexp "RATIONALE:[ ]*\\(.*\\)" in
+          if Str.string_match params_regex line_trim 0 then (
             let params_str = String.trim (Str.matched_group 1 line_trim) in
+            Printf.printf "📋 Found PARAMS: %s\n" params_str;
             parse_tool_blocks acc current_tool params_str current_rationale rest
-          with
-          | Invalid_argument _ ->
-              Printf.printf "⚠️ Error parsing PARAMS line: %s\n" line_trim;
-              parse_tool_blocks acc current_tool "" current_rationale rest)
-          
-        else if Str.string_match (Str.regexp "RATIONALE:[ ]*\\(.*\\)") line_trim 0 then
-          (try
+          ) else if Str.string_match rationale_regex line_trim 0 then (
             let rationale_str = String.trim (Str.matched_group 1 line_trim) in
+            Printf.printf "💭 Found RATIONALE: %s\n" rationale_str;
             parse_tool_blocks acc current_tool current_params rationale_str rest
-          with
-          | Invalid_argument _ ->
-              Printf.printf "⚠️ Error parsing RATIONALE line: %s\n" line_trim;
-              parse_tool_blocks acc current_tool current_params "" rest)
-          
-        else
-          (* Continue processing current block *)
-          parse_tool_blocks acc current_tool current_params current_rationale rest
+          ) else (
+            (* Continue processing current block or skip unrecognized lines *)
+            if String.trim line <> "" then
+              Printf.printf "🔍 Skipping line: %s\n" line_trim;
+            parse_tool_blocks acc current_tool current_params current_rationale rest
+          )
+        )
   in
   parse_tool_blocks [] "" "" "" lines
 

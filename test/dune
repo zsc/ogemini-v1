@@ -1,0 +1,4 @@
+(executable
+ (public_name test_parser)
+ (name test_parser)
+ (libraries ogemini str))
