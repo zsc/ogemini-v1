@@ -42,8 +42,9 @@ let parse_execution_plan response_content =
         
         (* Look for [TOOL: toolname] pattern *)
         if Str.string_match (Str.regexp ".*\\[TOOL:[ ]*\\([^]]+\\)\\]\\(.*\\)") line_trim 0 then
-          let tool_name = String.trim (Str.matched_group 1 line_trim) in
-          let description = String.trim (Str.matched_group 2 line_trim) in
+          (try
+            let tool_name = String.trim (Str.matched_group 1 line_trim) in
+            let description = String.trim (Str.matched_group 2 line_trim) in
           
           (* Extract parameters from description or use defaults *)
           let action = match String.lowercase_ascii tool_name with
@@ -142,6 +143,10 @@ let parse_execution_plan response_content =
                 }
           in
           extract_actions (action :: acc) rest
+          with
+          | Invalid_argument _ -> 
+              Printf.printf "⚠️ Error parsing tool line: %s\n" line_trim;
+              extract_actions acc rest)
             
         (* Also look for numbered steps without [TOOL:] but mentioning tools *)
         else if Str.string_match (Str.regexp "^[0-9]+\\..*\\(list_files\\|read_file\\|write_file\\|shell\\|dune\\).*") line_trim 0 then
@@ -197,24 +202,35 @@ let extract_context_from_conversation conversation =
 (** Generate execution plan using LLM *)
 let generate_execution_plan config goal context_list =
   let planning_prompt = create_planning_prompt goal context_list in
-  let+ response = Api_client.send_message config [
+  let* response = Api_client.send_message config [
     { role = "user"; content = planning_prompt; events = []; timestamp = Unix.time () }
   ] in
   match response with
   | Success msg -> 
-      let actions = parse_execution_plan msg.content in
-      (actions, msg.content)
+      (* Use LLM-driven parser for Phase 5 *)
+      let* (actions, debug_info) = Llm_plan_parser.parse_execution_plan_hybrid config msg.content in
+      Printf.printf "🔍 Plan parsing debug: %s\n" (String.sub debug_info 0 (min 100 (String.length debug_info)));
+      Lwt.return (actions, msg.content)
   | Error err -> 
-      ([], "Planning failed: " ^ err)
+      Lwt.return ([], "Planning failed: " ^ err)
 
 (** Execute a single action with external tool executor *)
-let execute_action tool_executor action =
+let execute_action config goal existing_files tool_executor action =
   match action with
   | ToolCall { name; args; rationale } ->
       Printf.printf "🔧 Executing: %s - %s\n" name rationale;
       flush_all ();
-      let tool_call = { id = "auto-" ^ string_of_float (Unix.time ()); name; args } in
-      tool_executor tool_call
+      (* Smart enhancement for dune files *)
+      let* enhanced_action = Dune_generator.enhance_write_file_action config action existing_files goal in
+      (match enhanced_action with
+       | ToolCall { name = enhanced_name; args = enhanced_args; rationale = enhanced_rationale } ->
+           if enhanced_rationale <> rationale then
+             Printf.printf "✨ Enhanced: %s\n" enhanced_rationale;
+           let tool_call = { id = "auto-" ^ string_of_float (Unix.time ()); name = enhanced_name; args = enhanced_args } in
+           tool_executor tool_call
+       | _ -> 
+           let tool_call = { id = "auto-" ^ string_of_float (Unix.time ()); name; args } in
+           tool_executor tool_call)
   | Wait { reason; duration } ->
       Printf.printf "⏳ Waiting %.1fs: %s\n" duration reason;
       flush_all ();
@@ -255,6 +271,14 @@ let diagnose_failures failures =
 
 (** Core cognitive loop - the heart of autonomous behavior *)
 let cognitive_loop config tool_executor state conversation =
+  let goal = match state with
+    | Planning { goal; _ } -> goal
+    | Executing { plan; _ } -> 
+        (match plan with
+         | (ToolCall { rationale; _ }) :: _ -> rationale
+         | _ -> "Unknown goal")
+    | _ -> "Unknown goal"
+  in
   match state with
   | Planning { goal; context } ->
       Printf.printf "🧠 Planning for goal: %s\n" goal;
@@ -266,16 +290,16 @@ let cognitive_loop config tool_executor state conversation =
         else
           context
       in
-      let+ (actions, plan_description) = generate_execution_plan config goal enhanced_context in
+      let* (actions, plan_description) = generate_execution_plan config goal enhanced_context in
       Printf.printf "📋 Plan generated:\n%s\n" plan_description;
       flush_all ();
       if List.length actions > 0 then
-        Executing { plan = actions; current_step = 0; results = [] }
+        Lwt.return (Executing { plan = actions; current_step = 0; results = [] })
       else
-        Adjusting { 
+        Lwt.return (Adjusting { 
           failures = [PlanningFailure { reason = "Could not generate actionable plan" }]; 
           new_plan = [] 
-        }
+        })
 
   | Executing { plan; current_step; results } ->
       if current_step >= List.length plan then
@@ -286,7 +310,7 @@ let cognitive_loop config tool_executor state conversation =
         (* Execute next step *)
         let action = List.nth plan current_step in
         Printf.printf "📋 Step %d/%d: " (current_step + 1) (List.length plan);
-        let+ result = execute_action tool_executor action in
+        let+ result = execute_action config goal [] tool_executor action in
         Printf.printf "%s\n" (if result.success then "✅ Success" else "❌ Failed");
         flush_all ();
         Executing { 

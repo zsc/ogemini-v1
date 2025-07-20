@@ -5,11 +5,11 @@ open Types
 (** Tool orchestrator for autonomous multi-step execution *)
 
 (** Execute a list of actions sequentially *)
-let execute_sequential_strategy tool_executor actions =
+let execute_sequential_strategy config goal existing_files tool_executor actions =
   let rec execute_step acc = function
     | [] -> Lwt.return (List.rev acc)
     | action :: remaining ->
-        Cognitive_engine.execute_action tool_executor action >>= fun result ->
+        Cognitive_engine.execute_action config goal existing_files tool_executor action >>= fun result ->
         Printf.printf "Sequential step result: %s\n" 
           (if result.success then "✅" else "❌ " ^ Option.value result.error_msg ~default:"unknown error");
         flush_all ();
@@ -18,15 +18,15 @@ let execute_sequential_strategy tool_executor actions =
   execute_step [] actions
 
 (** Execute a list of actions in parallel *)
-let execute_parallel_strategy tool_executor actions =
-  let action_promises = List.map (Cognitive_engine.execute_action tool_executor) actions in
+let execute_parallel_strategy config goal existing_files tool_executor actions =
+  let action_promises = List.map (Cognitive_engine.execute_action config goal existing_files tool_executor) actions in
   let+ results = Lwt.all action_promises in
   Printf.printf "Parallel execution completed: %d results\n" (List.length results);
   flush_all ();
   results
 
 (** Execute conditional strategy *)
-let execute_conditional_strategy tool_executor condition if_true if_false trigger_result =
+let execute_conditional_strategy config goal existing_files tool_executor condition if_true if_false trigger_result =
   let chosen_actions = 
     if condition trigger_result then (
       Printf.printf "🔀 Condition TRUE - executing primary branch\n";
@@ -37,20 +37,20 @@ let execute_conditional_strategy tool_executor condition if_true if_false trigge
     )
   in
   flush_all ();
-  execute_sequential_strategy tool_executor chosen_actions
+  execute_sequential_strategy config goal existing_files tool_executor chosen_actions
 
 (** Main strategy executor *)
-let execute_strategy tool_executor strategy =
+let execute_strategy config goal existing_files tool_executor strategy =
   match strategy with
   | Sequential actions ->
       Printf.printf "🔄 Executing %d actions sequentially...\n" (List.length actions);
       flush_all ();
-      execute_sequential_strategy tool_executor actions
+      execute_sequential_strategy config goal existing_files tool_executor actions
       
   | Parallel actions ->
       Printf.printf "⚡ Executing %d actions in parallel...\n" (List.length actions);
       flush_all ();
-      execute_parallel_strategy tool_executor actions
+      execute_parallel_strategy config goal existing_files tool_executor actions
       
   | Conditional { condition; if_true; if_false } ->
       Printf.printf "🤔 Executing conditional strategy - need trigger result\n";
@@ -61,8 +61,8 @@ let execute_strategy tool_executor strategy =
         args = [("dir_path", "/workspace")]; 
         rationale = "Trigger action for conditional execution" 
       } in
-      Cognitive_engine.execute_action tool_executor trigger_action >>= fun trigger_result ->
-      execute_conditional_strategy tool_executor condition if_true if_false trigger_result >>= fun conditional_results ->
+      Cognitive_engine.execute_action config goal existing_files tool_executor trigger_action >>= fun trigger_result ->
+      execute_conditional_strategy config goal existing_files tool_executor condition if_true if_false trigger_result >>= fun conditional_results ->
       Lwt.return (trigger_result :: conditional_results)
 
 (** Adaptive retry logic for failed actions *)
@@ -169,12 +169,12 @@ let create_strategy_from_goal goal context_list =
     ]
 
 (** Execute strategy with retry logic *)
-let execute_strategy_with_retry tool_executor strategy max_retries =
+let execute_strategy_with_retry config goal existing_files tool_executor strategy max_retries =
   let rec attempt retry_count =
     if retry_count >= max_retries then
       Lwt.return []
     else
-      execute_strategy tool_executor strategy >>= fun results ->
+      execute_strategy config goal existing_files tool_executor strategy >>= fun results ->
       let failed_results = List.filter (fun r -> not r.success) results in
       if List.length failed_results = 0 then
         Lwt.return results
