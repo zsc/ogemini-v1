@@ -1,0 +1,4 @@
+(library
+ (public_name ogemini)
+ (name ogemini)
+ (libraries lwt lwt.unix yojson re unix))

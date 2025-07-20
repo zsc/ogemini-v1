@@ -1,0 +1,16 @@
+profile = default
+version = 0.26.0
+break-cases = fit
+break-fun-decl = wrap
+break-infix = wrap
+break-struct = force
+cases-matching-exp-indent = 2
+doc-comments = before
+field-space = loose
+if-then-else = compact
+indent-after-in = 0
+let-and = compact
+margin = 80
+parens-tuple = multi-line-only
+sequence-style = separator
+type-decl = sparse
