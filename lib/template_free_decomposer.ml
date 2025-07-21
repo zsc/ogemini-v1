@@ -255,13 +255,18 @@ let create_autonomous_microtasks config source_file target_language =
             prompt = Printf.sprintf {|
 The build failed in attempt %d. You need to fix the OCaml code compilation errors.
 
-IMPORTANT: The previous build task output will be in the context above. Look for error messages like:
-- "Error: Unbound value" - missing function or variable definition
-- "Error: This expression has type X but an expression was expected of type Y" - type mismatch
-- "Error: Syntax error" - OCaml syntax issues
-- "Error: Unbound module" - missing module or incorrect module name
+CRITICAL: Look in the context above for a section labeled [build_attempt_%d] which contains the build output.
+The build error will show something like:
+  File "filename.ml", line X, characters Y-Z:
+  Error: <specific error message>
 
-Based on the SPECIFIC ERROR MESSAGE from the build output above, generate the corrected OCaml code.
+Common error patterns and fixes:
+- "Error: Unbound value calculate" → Add 'rec' keyword: "let rec calculate ..."
+- "Error: This expression has type X but an expression was expected of type Y" → Fix type mismatch
+- "Error: Syntax error" → Check OCaml syntax (;; for top-level, proper indentation)
+- "Error: Unbound module" → Add proper 'open' statements or module references
+
+Based on the SPECIFIC ERROR MESSAGE from [build_attempt_%d] above, generate the corrected OCaml code.
 
 Common fixes:
 1. For recursive functions, use 'let rec' instead of just 'let'
@@ -275,7 +280,7 @@ Focus on fixing the specific error mentioned in the build output.
 IMPORTANT: Look at the error message to identify which file has the problem.
 The error will typically show the file path like "File "path/to/file.ml", line X"
 Generate the complete fixed content for that specific file.
-|} attempt;
+|} attempt attempt attempt;
             target_file = Printf.sprintf "/workspace/fixed_%d.ml" attempt;
             expected_length = 5;
           };

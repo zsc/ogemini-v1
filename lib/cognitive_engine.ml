@@ -8,11 +8,19 @@ let execute_template_free_microtasks config goal tool_executor micro_tasks =
   (* Build context from previous results *)
   let build_context_from_results results =
     List.fold_left (fun ctx result ->
-      if result.success then
-        (* Add successful results to context *)
-        (Printf.sprintf "[%s]: %s" result.task_id result.result.content) :: ctx
-      else
-        ctx
+      (* Include both successful and failed results in context *)
+      let content = 
+        if result.success then
+          result.result.content
+        else
+          (* For failed tasks, include error message and any output *)
+          let error_msg = match result.result.error_msg with
+            | Some err -> Printf.sprintf "ERROR: %s" err
+            | None -> "ERROR: Unknown error"
+          in
+          Printf.sprintf "%s\n%s" result.result.content error_msg
+      in
+      (Printf.sprintf "[%s]: %s" result.task_id content) :: ctx
     ) [] results |> List.rev
   in
   

@@ -6,7 +6,7 @@
 我们希望用 OCaml 重写 Gemini-cli，作为后续扩展的基础。
 不需要兼容 Gemini-cli。先出一个能运行的 MVP。
 
-**📅 当前状态**: ✅ Phase 8.3 迭代改进机制验证 - Template-free系统的核心架构已验证工作，能够：1)正确读取源文件 2)生成语法正确的OCaml代码 3)执行build-fix迭代循环。但发现关键问题：fix任务无法获取build错误信息，导致无法进行有效修复。**[Evidence: traces/phase83_test_20250721_204317.log - OCaml代码生成成功但fix任务缺少错误上下文]**
+**📅 当前状态**: ✅ Phase 8.4 上下文传递机制实现 - 成功解决了build错误传递问题。系统现在能够：1)捕获完整的build错误输出 2)将错误信息传递给fix任务 3)fix任务能看到具体错误并生成修复代码。下一步需要让fix任务直接修改问题文件而非创建新文件。**[Evidence: traces/phase84_improved_20250721_205434.log - fix任务成功接收并处理build错误]**
 
 ## 📊 项目进展概览
 
@@ -1915,6 +1915,37 @@ type event_type =
 - Fix任务能看到具体的编译错误信息
 - 生成针对性的修复代码
 - 迭代改进真正发挥作用
+
+## ✅ Phase 8.4 实施成果 **[Evidence: traces/phase84_improved_20250721_205434.log]**
+
+**成功实现的改进**：
+1. **✅ 错误上下文传递** - build任务的完整输出（包括错误）现在被传递给后续任务
+2. **✅ 错误信息可见** - fix任务能看到具体的编译错误信息
+3. **✅ 智能修复生成** - LLM基于错误信息生成正确的修复代码
+
+**验证结果**：
+```
+[build_attempt_1]: Build output:
+File "dune-project", line 1, characters 0-32:
+Error: Invalid first line, expected: (lang <lang> <version>)
+
+[fix_errors_2]: 看到错误并生成修复:
+(lang dune 3.0)
+```
+
+**剩余问题**：
+- Fix任务创建新文件（fixed_N.ml）而非修改原始问题文件
+- 需要从错误信息中解析文件路径并直接修改该文件
+
+## 🔄 Phase 8.5 计划：智能文件定位与修改
+
+**目标**：让fix任务能够识别错误来源文件并直接修改，而非创建新文件
+
+**实施方案**：
+1. **错误文件解析** - 从编译错误中提取文件路径（如"File \"dune-project\", line 1"）
+2. **使用edit_file工具** - 用edit_file而非write_file来修改现有文件
+3. **智能内容替换** - 基于错误类型决定如何修改文件内容
+4. **验证修复效果** - 确保修改后的文件能够成功编译
 
 ---
 

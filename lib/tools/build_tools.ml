@@ -74,7 +74,11 @@ let dune_build (target : string option) : simple_tool_result Lwt.t =
       Printf.printf "%s Build: %s (%.2fs)\n" 
         (if success then "✅" else "❌") command execution_time;
       
-      Lwt.return { content = formatted_output ^ analysis_output; success; error_msg = None }
+      Lwt.return { 
+        content = formatted_output ^ analysis_output; 
+        success; 
+        error_msg = if success then None else Some (formatted_output ^ analysis_output)
+      }
     )
     (fun exn ->
       let execution_time = Unix.gettimeofday () -. start_time in
