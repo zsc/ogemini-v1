@@ -17,6 +17,8 @@ AVAILABLE TOOLS:
 - write_file(file_path, content) - Write content to file
 - edit_file(file_path, old_string, new_string, expected_replacements) - Replace text in file
 - search_files(pattern, path, file_pattern) - Search for text patterns in files
+- analyze_project(path) - Analyze project structure and module dependencies
+- rename_module(old_name, new_name, path) - Rename module across entire project
 - shell(command) - Execute shell command
 - dune_build(target) - Build OCaml project
 - dune_test(target) - Run tests
@@ -154,6 +156,16 @@ let create_action_from_parsed tool_name params_str rationale =
         | None -> args
       in
       ToolCall { name = "search_files"; args = final_args; rationale }
+      
+  | "analyze_project" ->
+      let path = List.assoc_opt "path" params |> Option.value ~default:"/workspace" in
+      ToolCall { name = "analyze_project"; args = [("path", path)]; rationale }
+      
+  | "rename_module" ->
+      let old_name = List.assoc_opt "old_name" params |> Option.value ~default:"" in
+      let new_name = List.assoc_opt "new_name" params |> Option.value ~default:"" in
+      let path = List.assoc_opt "path" params |> Option.value ~default:"/workspace" in
+      ToolCall { name = "rename_module"; args = [("old_name", old_name); ("new_name", new_name); ("path", path)]; rationale }
       
   | "shell" ->
       let command = List.assoc_opt "command" params |> Option.value ~default:"ls -la" in

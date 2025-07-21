@@ -188,6 +188,44 @@ let build_request_json text config =
               ]);
               ("required", `List [`String "pattern"])
             ])
+          ];
+          (* Project analysis tool *)
+          `Assoc [
+            ("name", `String "analyze_project");
+            ("description", `String "Analyze OCaml project structure, modules, and dependencies. Useful for understanding codebase organization.");
+            ("parameters", `Assoc [
+              ("type", `String "object");
+              ("properties", `Assoc [
+                ("path", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "Directory path to analyze (defaults to /workspace)")
+                ])
+              ]);
+              ("required", `List [])
+            ])
+          ];
+          (* Module renaming tool *)
+          `Assoc [
+            ("name", `String "rename_module");
+            ("description", `String "Rename a module across the entire project, updating all references. Useful for refactoring and code organization.");
+            ("parameters", `Assoc [
+              ("type", `String "object");
+              ("properties", `Assoc [
+                ("old_name", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "Current module name to rename")
+                ]);
+                ("new_name", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "New module name")
+                ]);
+                ("path", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "Project directory path (defaults to /workspace)")
+                ])
+              ]);
+              ("required", `List [`String "old_name"; `String "new_name"])
+            ])
           ]
         ])
       ]

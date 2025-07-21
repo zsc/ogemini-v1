@@ -23,6 +23,8 @@ Please create a concrete execution plan using ONLY these available tools:
 - write_file (file_path, content) - Write content to a file
 - edit_file (file_path, old_string, new_string, expected_replacements) - Replace text in file
 - search_files (pattern, path, file_pattern) - Search for text patterns in files
+- analyze_project (path) - Analyze project structure and module dependencies
+- rename_module (old_name, new_name, path) - Rename module across entire project
 - shell (command) - Execute a shell command
 - dune_build (target) - Build an OCaml project
 - dune_test (target) - Run tests

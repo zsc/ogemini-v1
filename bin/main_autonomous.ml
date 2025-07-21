@@ -45,6 +45,10 @@ let execute_tool_call tool_call =
       Tools.Edit_tools.tool_edit_file tool_call.args
   | "search_files" ->
       Tools.Search_tools.tool_search_files tool_call.args
+  | "analyze_project" ->
+      Tools.Project_tools.tool_analyze_project tool_call.args
+  | "rename_module" ->
+      Tools.Project_tools.tool_rename_module tool_call.args
   | _ ->
       Lwt.return { content = ""; success = false; error_msg = Some ("Unknown tool: " ^ tool_call.name) }
   in
