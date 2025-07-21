@@ -88,6 +88,9 @@ CRITICAL REQUIREMENTS:
 4. Translate Python dictionaries → OCaml Hashtbl or Map
 5. Be syntactically correct and compilable OCaml
 6. Follow OCaml best practices and idioms
+7. IMPORTANT: Use 'let rec' for recursive functions (not just 'let')
+8. Ensure all function references are properly scoped
+9. Test that your code would compile with 'ocamlc'
 
 CRITICAL: Generate ONLY raw file content. 
 NO markdown formatting, NO triple backticks (```), NO language tags.
@@ -195,7 +198,23 @@ let create_autonomous_microtasks config source_file target_language =
       } in
       
       let implementation_tasks = create_tasks [] ["analyze_source_code"] 1 implementation_steps in
-      analysis_task :: implementation_tasks
+      
+      (* Add a build verification task at the end *)
+      let build_task = {
+        id = "verify_build";
+        description = "Attempt to build the generated OCaml code and fix any compilation errors";
+        action = ToolCall {
+          name = "shell";
+          args = [("command", "cd /workspace && echo '(lang dune 3.0)' > dune-project && echo '(executable (name main))' > dune && dune build 2>&1 || true")];
+          rationale = "Test if generated code compiles and identify any errors"
+        };
+        verification = "Build attempt completed";
+        dependencies = List.map (fun t -> t.id) implementation_tasks;
+        retry_limit = 0;
+        complexity = `Simple;
+      } in
+      
+      analysis_task :: implementation_tasks @ [build_task]
 
 (** Create simple file reading micro-task *)
 let create_simple_file_task _config task_description =
