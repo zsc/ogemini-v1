@@ -1,0 +1,9 @@
+(lang dune 3.0)
+
+(name game2048)
+
+(package
+ (name game2048)
+ (synopsis "OCaml implementation of 2048 game with bit-level accuracy")
+ (description "A mathematically equivalent OCaml translation of Python 2048 game")
+ (depends ocaml dune))
