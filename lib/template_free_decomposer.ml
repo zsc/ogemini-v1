@@ -9,29 +9,38 @@ open Types
 (** Force LLM to analyze source code and create implementation plan *)
 let create_analysis_prompt source_file target_language =
   Printf.sprintf {|
-I need to analyze source code and create an implementation plan for translation.
+I need to analyze Python source code and create a PURE OCaml implementation plan.
 
 SOURCE FILE: %s
 TARGET LANGUAGE: %s
 
+IMPORTANT: 
+- Create a PURE OCaml translation, NOT Python bindings
+- Translate Python classes to OCaml modules with mutable state or functional style
+- Translate Python methods to OCaml functions
+- Do NOT use Python FFI or pyml library
+
 Please analyze the source code and provide:
 1. A detailed breakdown of the key algorithms and data structures
-2. The most appropriate target language design patterns
-3. A step-by-step implementation plan (5-10 steps max)
-4. For each step, specify:
-   - What file to create
-   - What the file should contain (types, functions, logic)
-   - Why this step is necessary
-   - Dependencies on previous steps
+2. The most appropriate OCaml design patterns and project structure
+3. A complete implementation plan with these specific steps:
 
-IMPORTANT: I need actual implementation details, not placeholders.
-Each step should result in compilable code that progressively builds toward the complete translation.
+For a Python to OCaml translation, create these files in order:
 
-Be specific about:
-- Type definitions that match the source semantics
-- Function signatures and their purpose  
-- Key algorithms that need to be implemented
-- Build system requirements
+1. dune-project - Project metadata (lang dune 3.7, project name)
+2. lib/dune - Library configuration 
+3. lib/[module_name].ml - Core translated functionality
+4. lib/[module_name].mli - Public interface (optional)
+5. bin/dune - Executable configuration
+6. bin/main.ml - Executable entry point using the library
+7. test/dune - Test configuration (optional)
+8. test/test_[module].ml - Unit tests (optional)
+
+IMPORTANT: 
+- Each file must contain actual, working OCaml code
+- Use proper OCaml idioms and best practices
+- Ensure all code compiles with dune build
+- Include proper module dependencies
 
 Format your response as a numbered list of implementation steps.
 |} source_file target_language
@@ -67,18 +76,25 @@ FILE TO CREATE: %s
 MODEL: %s
 
 IMPORTANT: You have access to the results from previous tasks in the context above, including:
-- The source code that was read (if a read_file task was executed)
+- The PYTHON source code that was read (if a read_file task was executed)
 - Any analysis or generated code from previous steps
 
-Based on the context and this specific step, generate the complete file content. The content must:
-1. Be syntactically correct and compilable
-2. Include all necessary type definitions and functions for this step
-3. Have proper module dependencies and imports
-4. Implement actual logic based on the source code analysis
-5. Follow language best practices and idioms
+Based on the context and this specific step, generate the complete file content. 
 
-Generate ONLY the file content, no explanations or markdown formatting.
-Start directly with the code.
+CRITICAL REQUIREMENTS:
+1. Create PURE OCaml code - do NOT use Python FFI/bindings
+2. Translate Python classes → OCaml modules/records
+3. Translate Python methods → OCaml functions
+4. Translate Python dictionaries → OCaml Hashtbl or Map
+5. Be syntactically correct and compilable OCaml
+6. Follow OCaml best practices and idioms
+
+CRITICAL: Generate ONLY raw file content. 
+NO markdown formatting, NO triple backticks (```), NO language tags.
+The VERY FIRST character of your response must be the start of the actual code.
+For dune files, start with "(lang dune..."
+For OCaml files, start with "let...", "module...", "open...", etc.
+DO NOT START WITH ``` or any other markdown.
 |} step_description file_path config.model in
 
   {
@@ -87,7 +103,7 @@ Start directly with the code.
     action = LLMGeneration { 
       prompt = generation_prompt;
       target_file = file_path;
-      expected_length = 10; (* Minimum 10 lines of actual code *)
+      expected_length = 5; (* More lenient - minimum 5 chars after stripping *)
     };
     verification = Printf.sprintf "%s file exists with working implementation" file_path;
     dependencies = dependencies;
@@ -121,11 +137,39 @@ let create_autonomous_microtasks config source_file target_language =
             (* Extract file path from step description *)
             let file_path = 
               try
-                let file_regex = Str.regexp ".*\\([a-zA-Z_][a-zA-Z0-9_]*\\.ml[i]?\\)" in
-                if Str.string_match file_regex step 0 then
-                  "/workspace/" ^ (Str.matched_group 1 step)
-                else
-                  Printf.sprintf "/workspace/step_%d.ml" step_index
+                (* Match paths like lib/types.ml, bin/main.ml, test/test_foo.ml *)
+                let path_regex = Str.regexp "\\(lib\\|bin\\|test\\)/\\([a-zA-Z_][a-zA-Z0-9_]*\\)\\(\\.ml[i]?\\)" in
+                if Str.string_match path_regex step 0 then
+                  let dir = Str.matched_group 1 step in
+                  let name = Str.matched_group 2 step in
+                  let ext = Str.matched_group 3 step in
+                  Printf.sprintf "/workspace/%s/%s%s" dir name ext
+                else (
+                  (* Try to find dune-project, dune, or other files *)
+                  try
+                    if String.contains step 'd' && String.contains step 'u' && 
+                       String.contains step 'n' && String.contains step 'e' then
+                      if String.contains step '-' && String.contains step 'p' then
+                        "/workspace/dune-project"
+                      else if String.contains step '/' then
+                        (* Match patterns like "Create lib/dune" *)
+                        let dir_file_regex = Str.regexp "\\(lib\\|bin\\|test\\)/dune" in
+                        if Str.string_match dir_file_regex step 0 then
+                          "/workspace/" ^ (Str.matched_string step)
+                        else
+                          "/workspace/dune"
+                      else
+                        "/workspace/dune"
+                    else
+                      (* Generic .ml file *)
+                      let file_regex = Str.regexp "\\([a-zA-Z_][a-zA-Z0-9_]*\\.ml[i]?\\)" in
+                      if Str.string_match file_regex step 0 then
+                        "/workspace/" ^ (Str.matched_group 1 step)
+                      else
+                        Printf.sprintf "/workspace/step_%d.ml" step_index
+                  with _ ->
+                    Printf.sprintf "/workspace/step_%d.ml" step_index
+                )
               with _ ->
                 Printf.sprintf "/workspace/step_%d.ml" step_index
             in

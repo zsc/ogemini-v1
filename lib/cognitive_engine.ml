@@ -80,18 +80,47 @@ let execute_template_free_microtasks config goal tool_executor micro_tasks =
                       llm_conversation_loop updated_conversation
                     ) else (
                       (* No function calls - process content *)
-                      if String.length msg.content >= expected_length then (
+                      (* Strip markdown formatting if present *)
+                      let clean_content = 
+                        let content = msg.content in
+                        (* Remove all markdown code blocks - more aggressive *)
+                        let content = 
+                          (* Remove ```language at start *)
+                          let regex1 = Str.regexp "^```[a-zA-Z]*\n?" in
+                          let content = try Str.replace_first regex1 "" content with _ -> content in
+                          (* Remove ``` at end *)
+                          let regex2 = Str.regexp "\n?```$" in
+                          let content = try Str.replace_first regex2 "" content with _ -> content in
+                          (* Also handle case where ``` is in the middle *)
+                          let regex3 = Str.regexp "```[a-zA-Z]*\n?" in
+                          let content = try Str.global_replace regex3 "" content with _ -> content in
+                          let regex4 = Str.regexp "\n?```" in
+                          try Str.global_replace regex4 "" content with _ -> content
+                        in
+                        String.trim content
+                      in
+                      (* Additional cleanup for dune files *)
+                      let final_content = 
+                        if String.ends_with ~suffix:"dune" target_file && 
+                           not (String.ends_with ~suffix:"dune-project" target_file) then
+                          (* Remove (lang dune X.X) from regular dune files - it should only be in dune-project *)
+                          let lang_regex = Str.regexp "(lang[ \t]+dune[ \t]+[0-9.]+)[ \t\n]*" in
+                          try Str.global_replace lang_regex "" clean_content with _ -> clean_content
+                        else
+                          clean_content
+                      in
+                      if String.length final_content >= expected_length then (
                         (* Use tool executor to write file *)
                         let* write_result = tool_executor { 
                           id = "write-" ^ string_of_float (Unix.time ());
                           name = "write_file"; 
-                          args = [("file_path", target_file); ("content", msg.content)]
+                          args = [("file_path", target_file); ("content", final_content)]
                         } in
-                        Printf.printf "✅ Generated %d chars to %s\n" (String.length msg.content) target_file;
+                        Printf.printf "✅ Generated %d chars to %s\n" (String.length final_content) target_file;
                         Lwt.return write_result
                       ) else (
                         Printf.printf "⚠️ Generated content too short (%d chars, expected %d+)\n" 
-                          (String.length msg.content) expected_length;
+                          (String.length final_content) expected_length;
                         Lwt.return { content = ""; success = false; error_msg = Some "Generated content too short" }
                       )
                     )

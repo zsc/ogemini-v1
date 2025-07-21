@@ -6,7 +6,7 @@
 我们希望用 OCaml 重写 Gemini-cli，作为后续扩展的基础。
 不需要兼容 Gemini-cli。先出一个能运行的 MVP。
 
-**📅 当前状态**: ✅ Phase 8.1 核心功能实现 - Template-free系统经修复后成功实现真正的源码翻译。系统能够：1)正确读取源文件 2)通过通用上下文机制在任务间传递结果 3)LLM基于实际源码生成正确翻译。成功将Python的print语句翻译为OCaml的print_endline。**[Evidence: traces/phase81_context_test_20250721_155512.log - 3/3任务成功，生成正确OCaml代码]**
+**📅 当前状态**: ⚠️ Phase 8.2 进行中 - Template-free系统能够生成OCaml代码但存在语法错误。已实现：1)成功去除Markdown格式 2)生成结构正确的OCaml代码 3)基本功能翻译。待解决：生成的代码可能缺少rec关键字等语法问题。**[Evidence: traces/phase82_cleanroom_final_20250721_201618.log - 2/2任务成功但代码有语法错误]**
 
 ## 📊 项目进展概览
 
@@ -156,9 +156,53 @@ LLM响应: {"functionCall": {"name": "read_file", "args": {"file_path": "/worksp
 2. **可追踪性**: 每个任务结果都被记录并传递给后续任务
 3. **智能生成**: LLM提示词明确指出可以使用上下文中的先前结果
 
-## 🎯 Phase 8.2 优化和整合计划
+## ✅ Phase 8.2 进展 - 清洁代码生成与项目结构改进
 
 **目标**: 基于Phase 7.2验证的技术基础，实现真正能够分析代码并生成对应实现的自主开发系统
+
+### ✅ Phase 8.2 实际进展 - 可构建的自主代码生成
+
+#### V3测试 **[Evidence: traces/phase82_v3_stdin_20250721_162517.log]**
+**问题发现**:
+- ❌ 生成的dune文件包含错误的`(lang dune X.X)`
+- ❌ 多个文件覆盖导致混乱
+- ❌ 无法直接构建
+
+#### 清洁室测试 **[Evidence: traces/phase82_cleanroom_final_20250721_201618.log]**
+**测试环境**: 
+- 全新workspace-phase82-cleanroom目录
+- 仅包含fibonacci.py源文件
+- 完全无人工干预的自主执行
+
+**实际生成结果**:
+```
+workspace-phase82-cleanroom/
+├── fibonacci.py     # 原始源文件
+└── step_1.ml        # 自主生成的OCaml翻译
+```
+
+**生成代码质量评估**:
+- ✅ **无Markdown格式**: 成功去除所有```标记
+- ✅ **功能基本完整**: 实现了calculate、get_sequence、clear_cache等核心功能
+- ❌ **语法错误**: 缺少`rec`关键字导致递归调用失败
+- ❌ **无法编译**: `Error: Unbound value "calculate"`
+
+**诚实评估**:
+```ocaml
+let calculate cache n =  (* 缺少 rec *)
+  ...
+  let value = (calculate cache (n - 1)) + ...  (* 递归调用失败 *)
+```
+
+**Phase 8.2 真实状态**:
+- ✅ Markdown清理功能有效
+- ✅ 能生成结构正确的OCaml代码
+- ❌ 生成的代码可能包含语法错误
+- ❌ 离"开箱即用"还有差距
+
+**改进方向**:
+- 需要在提示词中强调OCaml递归函数语法
+- 可以添加简单的语法检查后处理
 
 ### 🔍 Phase 8.1: 诊断和修复LLM任务规划逻辑 🧠 [立即执行]
 
@@ -1704,6 +1748,12 @@ type event_type =
 ```
 
 ## 📂 项目结构和导航
+
+⚠️ **重要提醒**: OGemini 项目存在两个位置，必须注意当前工作目录：
+- **主目录**: `/Users/zsc/Downloads/ogemini/` ← 这是主要工作目录，包含最新代码
+- **备份目录**: `/Users/zsc/d/ogemini/` ← 可能包含旧版本，避免在此目录操作
+- **验证方法**: 使用 `pwd` 检查当前目录，确保在正确位置执行命令
+
 ```
 🏠 /Users/zsc/Downloads/ogemini/  ← ROOT DIRECTORY (工作目录)
 ├── 📄 .env                      ← API 密钥配置
