@@ -105,6 +105,18 @@ let execute_template_free_microtasks config goal tool_executor micro_tasks =
                           let regex4 = Str.regexp "\n?```" in
                           try Str.global_replace regex4 "" content with _ -> content
                         in
+                        (* Remove conversational prefixes/suffixes that LLMs often add *)
+                        let content = 
+                          (* Remove common prefixes like "Okay, I have written...", "OK. The tool..." *)
+                          let prefix_regex = Str.regexp "^\\(OK\\|Okay\\|Alright\\|Sure\\|Here's\\|I've\\|I have\\|The tool\\)[^.!?]*\\(written\\|created\\|generated\\|made\\)[^.!?]*\\(file\\|content\\)[^.!?]*[.!?][ \n]*" in
+                          let content = try Str.global_replace prefix_regex "" content with _ -> content in
+                          (* Remove trailing questions like "What would you like to do next?" *)
+                          let suffix_regex = Str.regexp "[ \n]+\\(What\\|Is there\\|Do you\\|Would you\\)[^.!?]*[?][ \n]*$" in
+                          let content = try Str.global_replace suffix_regex "" content with _ -> content in
+                          (* Remove "Error: No candidates in response" which sometimes appears *)
+                          let error_regex = Str.regexp "Error: No candidates in response[ \n]*" in
+                          try Str.global_replace error_regex "" content with _ -> content
+                        in
                         String.trim content
                       in
                       (* Additional cleanup for dune files *)

@@ -94,10 +94,13 @@ CRITICAL REQUIREMENTS:
 
 CRITICAL: Generate ONLY raw file content. 
 NO markdown formatting, NO triple backticks (```), NO language tags.
+NO conversational text like "Here's the file" or "I've created".
+DO NOT say "Okay" or explain what you're doing.
 The VERY FIRST character of your response must be the start of the actual code.
-For dune files, start with "(lang dune..."
+For dune files, start with "(lang dune..." or "(executable..."
 For OCaml files, start with "let...", "module...", "open...", etc.
 DO NOT START WITH ``` or any other markdown.
+JUST THE CODE. NOTHING ELSE.
 |} step_description file_path config.model in
 
   {

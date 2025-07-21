@@ -6,7 +6,7 @@
 我们希望用 OCaml 重写 Gemini-cli，作为后续扩展的基础。
 不需要兼容 Gemini-cli。先出一个能运行的 MVP。
 
-**📅 当前状态**: ✅ Phase 8.4 上下文传递机制实现 - 成功解决了build错误传递问题。系统现在能够：1)捕获完整的build错误输出 2)将错误信息传递给fix任务 3)fix任务能看到具体错误并生成修复代码。下一步需要让fix任务直接修改问题文件而非创建新文件。**[Evidence: traces/phase84_improved_20250721_205434.log - fix任务成功接收并处理build错误]**
+**📅 当前状态**: ⚠️ Phase 8.4 上下文传递机制部分成功 - 系统改进包括：1)捕获完整的build错误输出 ✅ 2)将错误信息传递给fix任务 ✅ 3)fix任务能看到错误并分析 ✅。但仍存在问题：LLM生成dune文件时产生对话文本而非配置内容。**[Evidence: traces/phase84_cleanroom_20250721_210323.log - 错误传递成功但LLM行为需改进]**
 
 ## 📊 项目进展概览
 
@@ -1916,36 +1916,54 @@ type event_type =
 - 生成针对性的修复代码
 - 迭代改进真正发挥作用
 
-## ✅ Phase 8.4 实施成果 **[Evidence: traces/phase84_improved_20250721_205434.log]**
+## ⚠️ Phase 8.4 实施成果 **[Evidence: traces/phase84_cleanroom_20250721_210323.log]**
 
 **成功实现的改进**：
 1. **✅ 错误上下文传递** - build任务的完整输出（包括错误）现在被传递给后续任务
 2. **✅ 错误信息可见** - fix任务能看到具体的编译错误信息
-3. **✅ 智能修复生成** - LLM基于错误信息生成正确的修复代码
+3. **✅ 智能错误分析** - fix任务正确识别问题并提出解决方案
 
 **验证结果**：
 ```
-[build_attempt_1]: Build output:
-File "dune-project", line 1, characters 0-32:
-Error: Invalid first line, expected: (lang <lang> <version>)
+生成的OCaml代码（正确）:
+let rec fibonacci n =
+  if n <= 0 then 0
+  else if n = 1 then 1
+  else fibonacci (n - 1) + fibonacci (n - 2)
 
-[fix_errors_2]: 看到错误并生成修复:
-(lang dune 3.0)
+生成的dune文件（错误）:
+"Okay, I see a lot of files... What can I do for you?"
+
+Fix任务分析（正确）:
+"The dune file is not valid... should contain s-expressions"
+建议修复: (library (name step_1))
 ```
 
-**剩余问题**：
-- Fix任务创建新文件（fixed_N.ml）而非修改原始问题文件
-- 需要从错误信息中解析文件路径并直接修改该文件
+**关键发现**：
+- LLM智能地调用list_files来了解项目结构（这是好事！）
+- 但list_files返回了整个ogemini源目录而非工作空间，导致混淆
+- 对话式响应出现在LLM被大量无关文件信息淹没时
+- 函数调用是智能行为，应该鼓励而非限制
 
-## 🔄 Phase 8.5 计划：智能文件定位与修改
+## 🔄 Phase 8.5 计划：增强LLM工具调用的上下文感知
 
-**目标**：让fix任务能够识别错误来源文件并直接修改，而非创建新文件
+**目标**：让LLM的工具调用更智能，特别是在文件生成任务中
+
+**关键洞察**：
+- 函数调用（如list_files）是LLM的智能探索行为，应该支持
+- 问题不在于函数调用本身，而在于工具返回的上下文是否合适
+- 当LLM看到大量无关文件时会变得困惑并产生对话式响应
 
 **实施方案**：
-1. **错误文件解析** - 从编译错误中提取文件路径（如"File \"dune-project\", line 1"）
-2. **使用edit_file工具** - 用edit_file而非write_file来修改现有文件
-3. **智能内容替换** - 基于错误类型决定如何修改文件内容
-4. **验证修复效果** - 确保修改后的文件能够成功编译
+1. **工作空间感知** - 在template-free模式下，list_files应默认列出/workspace而非当前目录
+2. **智能提示增强** - 在LLMGeneration提示词中明确当前工作目录
+3. **多轮对话优化** - 接受并优化LLM的探索性工具调用
+4. **上下文过滤** - 避免用无关信息淹没LLM
+
+**预期效果**：
+- LLM可以自由探索项目结构
+- 生成的文件内容更准确
+- 减少对话式响应的出现
 
 ---
 
