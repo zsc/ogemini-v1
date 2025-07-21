@@ -281,13 +281,14 @@ let execute_action config goal existing_files tool_executor action =
       Lwt.return { content = "User interaction logged"; success = true; error_msg = None }
 
 (** Evaluate execution results *)
-let evaluate_results actions results =
+let evaluate_results actions (results : simple_tool_result list) =
   let total_actions = List.length actions in
-  let successful_results = List.filter (fun r -> r.success) results in
-  let failed_results = List.filter (fun r -> not r.success) results in
+  let successful_results = List.filter (fun (r : simple_tool_result) -> r.success) results in
+  let failed_results = List.filter (fun (r : simple_tool_result) -> not r.success) results in
   
   let success = List.length successful_results >= (total_actions / 2) in
-  let failures = List.map (function
+  let failures = List.map (fun (result : simple_tool_result) ->
+    match result with
     | { success = false; error_msg = Some err; _ } -> 
         ToolExecutionFailure { tool = "unknown"; error = err }
     | _ -> 
@@ -321,23 +322,52 @@ let cognitive_loop config tool_executor state conversation =
   | Planning { goal; context } ->
       Printf.printf "🧠 Planning for goal: %s\n" goal;
       flush_all ();
-      (* Extract additional context from conversation if initial context is insufficient *)
-      let enhanced_context = 
-        if List.length context < 3 && List.length conversation > 0 then
-          context @ extract_context_from_conversation conversation
+      
+      (* Check if task should use micro-decomposition *)
+      if Micro_task_decomposer.should_use_micro_decomposition goal then (
+        Printf.printf "🔬 Complex task detected - using micro-task decomposition strategy\n";
+        flush_all ();
+        let micro_tasks = Micro_task_decomposer.create_micro_tasks_for_goal goal in
+        Printf.printf "📋 Generated %d micro-tasks for execution\n" (List.length micro_tasks);
+        flush_all ();
+        (* Execute micro-tasks directly *)
+        let* micro_results = Micro_task_decomposer.execute_micro_tasks config goal [] tool_executor execute_action micro_tasks in
+        let (successful_count, total_count, completion_percentage) = 
+          Micro_task_decomposer.calculate_progress micro_results (List.length micro_tasks) in
+        Printf.printf "🎯 Micro-task execution completed: %d/%d tasks successful (%.1f%%)\n" 
+          successful_count total_count completion_percentage;
+        flush_all ();
+        
+        let summary = Printf.sprintf 
+          "Micro-task decomposition completed. %d/%d tasks successful (%.1f%% completion rate)" 
+          successful_count total_count completion_percentage in
+        
+        (* Convert micro-task results to simple tool results for evaluation *)
+        let tool_results = List.map (fun mr -> mr.result) micro_results in
+        
+        Lwt.return (Completed { summary; final_results = tool_results })
+      ) else (
+        (* Use standard planning for simple tasks *)
+        Printf.printf "📋 Using standard planning for this task\n";
+        flush_all ();
+        (* Extract additional context from conversation if initial context is insufficient *)
+        let enhanced_context = 
+          if List.length context < 3 && List.length conversation > 0 then
+            context @ extract_context_from_conversation conversation
+          else
+            context
+        in
+        let* (actions, plan_description) = generate_execution_plan config goal enhanced_context in
+        Printf.printf "📋 Plan generated:\n%s\n" plan_description;
+        flush_all ();
+        if List.length actions > 0 then
+          Lwt.return (Executing { plan = actions; current_step = 0; results = [] })
         else
-          context
-      in
-      let* (actions, plan_description) = generate_execution_plan config goal enhanced_context in
-      Printf.printf "📋 Plan generated:\n%s\n" plan_description;
-      flush_all ();
-      if List.length actions > 0 then
-        Lwt.return (Executing { plan = actions; current_step = 0; results = [] })
-      else
-        Lwt.return (Adjusting { 
-          failures = [PlanningFailure { reason = "Could not generate actionable plan" }]; 
-          new_plan = [] 
-        })
+          Lwt.return (Adjusting { 
+            failures = [PlanningFailure { reason = "Could not generate actionable plan" }]; 
+            new_plan = [] 
+          })
+      )
 
   | Executing { plan; current_step; results } ->
       if current_step >= List.length plan then

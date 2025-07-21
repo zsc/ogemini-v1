@@ -42,6 +42,13 @@ type simple_confirmation =
   | Approve
   | Reject
 
+(** Action types for micro-tasks *)
+type action = 
+  | ToolCall of { name: string; args: (string * string) list; rationale: string }
+  | LLMGeneration of { prompt: string; target_file: string; expected_length: int }
+  | Wait of { reason: string; duration: float }
+  | UserInteraction of { prompt: string; expected_response: string }
+
 (** Event types - corresponds to gemini-cli's event system *)
 type event_type =
   | Content of string
@@ -157,3 +164,33 @@ type autonomous_continuation_state =
   | AgentExecutesPlan of cognitive_state  (* New: autonomous execution *)
   | AgentNeedsGuidance of string          (* New: agent needs help *)
   | Finished
+
+(** Phase 7.2: Micro-task decomposition types *)
+
+(** Task complexity classification *)
+type task_complexity = [`Simple | `Medium | `Complex]
+
+(** Micro-task definition with verification criteria *)
+type micro_task = {
+  id: string;
+  description: string;
+  action: action;
+  verification: string;
+  dependencies: string list;
+  retry_limit: int;
+  complexity: task_complexity;
+}
+
+(** Micro-task execution result *)
+type micro_task_result = {
+  task_id: string;
+  success: bool;
+  result: simple_tool_result;
+  verification_passed: bool;
+  attempts: int;
+}
+
+(** Task decomposition mode *)
+type decomposition_mode = 
+  | StandardExecution  (* Use existing cognitive engine *)
+  | MicroTaskMode of micro_task list  (* Use micro-task decomposition *)
