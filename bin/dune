@@ -1,4 +1,4 @@
 (executables
- (public_names ogemini ogemini-autonomous)
- (names main main_autonomous)
+ (public_names ogemini ogemini-autonomous test_microtask)
+ (names main main_autonomous test_microtask)
  (libraries ogemini tools lwt lwt.unix))

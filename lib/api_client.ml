@@ -387,9 +387,22 @@ let parse_api_response response_text =
 
 (** Send message to Gemini API *)
 let send_message config conversation =
-  (* For MVP, just send the last user message *)
+  (* Handle the last user message, including events (tool results) *)
   let last_message = match List.rev conversation with
-    | msg :: _ when msg.role = "user" -> msg.content
+    | msg :: _ when msg.role = "user" -> 
+        (* If message has events, format them as tool results *)
+        if List.length msg.events > 0 then
+          let tool_results = List.map (function
+            | ToolCallResponse result -> 
+                Printf.sprintf "Tool result: %s" result.content
+            | _ -> ""
+          ) msg.events |> String.concat "\n" in
+          if String.length msg.content > 0 then
+            msg.content ^ "\n\nTool Results:\n" ^ tool_results
+          else
+            "Tool Results:\n" ^ tool_results
+        else
+          msg.content
     | _ -> "Hello"
   in
   

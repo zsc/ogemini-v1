@@ -6,6 +6,7 @@ type config = {
   api_endpoint : string;
   model : string;
   enable_thinking : bool;
+  force_template_free : bool; (* Phase 7.1: Force template-free mode for testing *)
 }
 
 (** Thought summary from AI thinking process *)
@@ -93,22 +94,6 @@ type response =
 (* For now, keeping simple_tool_result and adding timing info via printf *)
 
 (** Phase 4: Autonomous Agent Cognitive Architecture *)
-
-(** Action types for autonomous execution plans *)
-type action = 
-  | ToolCall of { 
-      name: string; 
-      args: (string * string) list; 
-      rationale: string; 
-    }
-  | Wait of { 
-      reason: string; 
-      duration: float; 
-    }
-  | UserInteraction of { 
-      prompt: string; 
-      expected_response: string; 
-    }
 
 (** Execution strategy for tool orchestration *)
 type execution_strategy = 

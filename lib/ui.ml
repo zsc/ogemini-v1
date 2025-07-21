@@ -45,7 +45,7 @@ let handle_tool_call_request tool_call =
   Printf.printf "🔧 Tool call: %s\n" tool_call.name
 
 (** Handle tool call response display *)
-let handle_tool_call_response result =
+let handle_tool_call_response (result : Types.simple_tool_result) =
   if result.success then
     Printf.printf "✅ Tool result:\n%s\n\n" result.content
   else

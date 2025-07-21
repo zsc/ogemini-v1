@@ -149,23 +149,110 @@ let create_autonomous_microtasks config source_file target_language =
       let implementation_tasks = create_tasks [] ["analyze_source_code"] 1 implementation_steps in
       analysis_task :: implementation_tasks
 
+(** Create simple file reading micro-task *)
+let create_simple_file_task _config task_description =
+  Printf.printf "📖 Creating simple file reading task\n";
+  
+  (* Extract file path from task description using multiple patterns *)
+  let extract_file_path desc =
+    (* Pattern 1: /workspace/filename.ext or /path/filename.ext *)
+    let absolute_path_regex = Str.regexp "/\\([a-zA-Z_][a-zA-Z0-9_/]*\\.[a-z]+\\)" in
+    try
+      if Str.search_forward absolute_path_regex desc 0 >= 0 then
+        Some ("/" ^ (Str.matched_group 1 desc))
+      else
+        (* Pattern 2: filename.ext *)
+        let filename_regex = Str.regexp "\\([a-zA-Z_][a-zA-Z0-9_]*\\.[a-z]+\\)" in
+        if Str.search_forward filename_regex desc 0 >= 0 then
+          Some ("/workspace/" ^ (Str.matched_group 1 desc))
+        else
+          None
+    with
+    | Not_found -> None
+  in
+  
+  let file_path = match extract_file_path task_description with
+    | Some path -> path
+    | None -> "/workspace/unknown_file"
+  in
+  
+  Printf.printf "📂 Extracted file path: %s\n" file_path;
+  
+  [{
+    id = "read_and_analyze_file";
+    description = Printf.sprintf "Read and analyze file %s to answer user's question" file_path;
+    action = LLMGeneration { 
+      prompt = Printf.sprintf "TASK: Create an OCaml version of the Python code in %s
+
+REQUIRED WORKFLOW:
+1. FIRST: Use read_file tool to read %s and examine its content
+2. THEN: Analyze the Python code structure, classes, functions, and algorithms
+3. FINALLY: Generate OCaml code that implements the same functionality
+
+IMPORTANT: You MUST follow this exact sequence:
+- Call read_file(%s) to get the source code
+- DO NOT call build tools until you have generated OCaml code
+- Your goal is CODE GENERATION, not building existing projects
+- Write the generated OCaml code that translates the Python functionality
+
+Expected output: Working OCaml code that replicates the Python program's behavior." file_path file_path file_path;
+      target_file = "/workspace/translated.ml"; (* Create actual OCaml file *)
+      expected_length = 50; (* Expect substantial code generation *)
+    };
+    verification = "File read and user question answered";
+    dependencies = [];
+    retry_limit = 2;
+    complexity = `Simple;
+  }]
+
 (** Main entry point for template-free task decomposition *)
 let decompose_complex_task config task_description =
   Printf.printf "🔍 Template-free decomposition for: %s\n" task_description;
   
-  (* Detect if this is a translation task *)
   let task_lower = String.lowercase_ascii task_description in
-  if String.contains task_lower 't' && String.contains task_lower 'r' && 
-     String.contains task_lower 'a' && String.contains task_lower 'n' then
-    (* This appears to be a translation task *)
-    if String.contains task_lower 'p' && String.contains task_lower 'y' then
-      (* Python source detected *)
-      create_autonomous_microtasks config "game.py" "OCaml"
-    else (
-      (* Generic translation - assume common source file names *)
-      Printf.printf "🔍 Looking for common source files...\n";
-      create_autonomous_microtasks config "main.py" "OCaml"
-    )
+  
+  (* First check for simple file reading tasks - but not if it's a creation/translation task *)
+  if not (String.contains task_lower 'c' && String.contains task_lower 'r' && 
+          String.contains task_lower 'e' && String.contains task_lower 'a') &&
+     not (String.contains task_lower 't' && String.contains task_lower 'r' && 
+          String.contains task_lower 'a' && String.contains task_lower 'n') &&
+     ((String.contains task_lower 'r' && String.contains task_lower 'e' && 
+       String.contains task_lower 'a' && String.contains task_lower 'd' &&
+       (String.contains task_lower 'f' || String.contains task_lower '.')) ||
+      (String.contains task_lower 's' && String.contains task_lower 'u' && 
+       String.contains task_lower 'm' && String.contains task_lower 'm')) then (
+    (* This is a simple file reading/analysis task *)
+    Printf.printf "📖 Detected simple file reading task\n";
+    Lwt.return (create_simple_file_task config task_description)
+  )
+  (* Check for translation tasks - make pattern more specific *)
+  else if String.contains task_lower 't' && String.contains task_lower 'r' && 
+          String.contains task_lower 'a' && String.contains task_lower 'n' &&
+          String.contains task_lower 's' && String.contains task_lower 'l' then (
+    (* This appears to be a translation task - extract actual source file *)
+    let source_file = 
+      (* Try to extract filename from task description *)
+      let file_regex = Str.regexp "/[^ \t\n]+\\.[a-z]+" in
+      let filename = try (
+        let _ = Str.search_forward file_regex task_description 0 in
+        let full_path = Str.matched_string task_description in
+        (* Extract just the filename from the path *)
+        let extracted = Filename.basename full_path in
+        Printf.printf "📂 Extracted from '%s' -> '%s'\n" full_path extracted;
+        extracted
+      ) with Not_found -> (
+        Printf.printf "🔍 No path found in '%s', using fallback\n" task_description;
+        if String.contains task_lower 'p' && String.contains task_lower 'y' then
+          "game.py" 
+        else
+          "main.py"
+      ) in
+      Printf.printf "📂 Final source file: %s\n" filename;
+      filename
+    in
+    Printf.printf "🔄 Translating source file: %s\n" source_file;
+    create_autonomous_microtasks config source_file "OCaml"
+  )
   else (
     (* Non-translation task - create generic LLM-driven decomposition *)
     let generic_prompt = Printf.sprintf {|

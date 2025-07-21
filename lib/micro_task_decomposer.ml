@@ -437,21 +437,23 @@ let execute_micro_tasks config goal existing_files tool_executor (execute_action
   execute_loop []
 
 (** Determine if a task should use micro-decomposition *)
-let should_use_micro_decomposition goal =
-  let goal_lower = String.lowercase_ascii goal in
-  (* Detect complex tasks that benefit from micro-decomposition *)
-  let contains_substring s substr =
-    try
-      ignore (Str.search_forward (Str.regexp_string substr) s 0);
-      true
-    with Not_found -> false
-  in
-  List.exists (fun keyword ->
-    contains_substring goal_lower keyword
-  ) [
-    "translate"; "implement"; "create project"; "build"; "2048"; 
-    "algorithm"; "complex"; "multi-step"; "end-to-end"
-  ]
+let should_use_micro_decomposition ?(force=false) goal =
+  if force then true else (
+    let goal_lower = String.lowercase_ascii goal in
+    (* Detect complex tasks that benefit from micro-decomposition *)
+    let contains_substring s substr =
+      try
+        ignore (Str.search_forward (Str.regexp_string substr) s 0);
+        true
+      with Not_found -> false
+    in
+    List.exists (fun keyword ->
+      contains_substring goal_lower keyword
+    ) [
+      "translate"; "implement"; "create project"; "build"; "2048"; 
+      "algorithm"; "complex"; "multi-step"; "end-to-end"; "read"; "file"  (* Added file reading keywords *)
+    ]
+  )
 
 (** Create micro-tasks based on task type detection *)
 let create_micro_tasks_for_goal goal =

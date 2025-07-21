@@ -198,8 +198,9 @@ USAGE:
     main_autonomous.exe [OPTIONS]
 
 OPTIONS:
-    --help, -h     Show this help message
-    --version, -v  Show version information
+    --help, -h           Show this help message
+    --version, -v        Show version information
+    --force-template-free Force template-free mode for all tasks
 
 DESCRIPTION:
     Starts the autonomous agent mode with interactive chat loop.
@@ -219,22 +220,26 @@ let print_version () =
 
 (** Parse command line arguments *)
 let parse_args () =
-  let parse_args_list args =
-    match args with
+  let force_template_free = ref false in
+  let rec parse = function
     | [] -> ()
     | "--help" :: _ | "-h" :: _ -> print_help ()
     | "--version" :: _ | "-v" :: _ -> print_version ()
+    | "--force-template-free" :: rest -> 
+        force_template_free := true; 
+        parse rest
     | arg :: _ ->
         Printf.printf "Unknown option: %s\n" arg;
         Printf.printf "Use --help for usage information.\n";
         exit 1
   in
-  parse_args_list (List.tl (Array.to_list Sys.argv))
+  parse (List.tl (Array.to_list Sys.argv));
+  !force_template_free
 
 (** Main program with autonomous capabilities *)
 let main () =
   (* Parse command line arguments first *)
-  parse_args ();
+  let force_template_free = parse_args () in
   
   match Config.init_config () with
   | Config.ConfigError err ->
@@ -244,11 +249,14 @@ let main () =
       Printf.printf ".env file exists: %b\n" (Sys.file_exists ".env");
       exit 1
   | Config.ConfigOk config ->
+      (* Phase 7.1: Apply force template-free flag *)
+      let config = { config with force_template_free } in
       print_autonomous_welcome ();
       Printf.printf "✅ Using model: %s\n" config.model;
       Printf.printf "✅ API key loaded: %s\n" (String.sub config.api_key 0 (min 10 (String.length config.api_key)) ^ "...");
       Printf.printf "💭 Thinking mode: %s\n" (if config.enable_thinking then "enabled" else "disabled");
-      Printf.printf "🧠 Autonomous mode: enabled\n\n";
+      Printf.printf "🧠 Autonomous mode: enabled\n";
+      Printf.printf "🔬 Template-free mode: %s\n\n" (if config.force_template_free then "FORCED" else "auto-detect");
       
       autonomous_chat_loop config [] None >>= fun () ->
       Lwt.return_unit

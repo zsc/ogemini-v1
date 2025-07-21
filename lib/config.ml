@@ -6,6 +6,7 @@ let default_config = {
   api_endpoint = "https://generativelanguage.googleapis.com/v1beta/models";
   model = "gemini-2.0-flash";  (* Default fast model *)
   enable_thinking = false;     (* Disable thinking for speed *)
+  force_template_free = false; (* Phase 7.1: Default to automatic detection *)
 }
 
 (** Create config with specific model *)

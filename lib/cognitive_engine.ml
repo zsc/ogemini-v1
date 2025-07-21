@@ -19,31 +19,65 @@ let execute_template_free_microtasks config goal tool_executor micro_tasks =
               
           | LLMGeneration { prompt; target_file; expected_length } ->
               Printf.printf "🧠 LLM Generation: %s\n" target_file;
-              (* Call LLM to generate code content *)
-              let* llm_response = Api_client.send_message config [
-                { role = "user"; content = prompt; events = []; timestamp = Unix.time () }
-              ] in
-              begin match llm_response with
-                | Success msg ->
-                    (* Write the generated content to the target file *)
-                    if String.length msg.content >= expected_length then (
-                      (* Use tool executor to write file *)
-                      let* write_result = tool_executor { 
-                        id = "write-" ^ string_of_float (Unix.time ());
-                        name = "write_file"; 
-                        args = [("file_path", target_file); ("content", msg.content)]
-                      } in
-                      Printf.printf "✅ Generated %d chars to %s\n" (String.length msg.content) target_file;
-                      Lwt.return write_result
-                    ) else (
-                      Printf.printf "⚠️ Generated content too short (%d chars, expected %d+)\n" 
-                        (String.length msg.content) expected_length;
-                      Lwt.return { content = ""; success = false; error_msg = Some "Generated content too short" }
-                    )
+              
+              (* Phase 7.2: Enhanced LLM generation with function call support *)
+              let rec llm_conversation_loop conversation_history =
+                let* llm_response = Api_client.send_message config conversation_history in
+                match llm_response with
                 | Error err ->
                     Printf.printf "❌ LLM generation failed: %s\n" err;
                     Lwt.return { content = ""; success = false; error_msg = Some err }
-              end
+                | Success msg ->
+                    (* Check if LLM made function calls *)
+                    let tool_calls = List.filter_map (function
+                      | ToolCallRequest tc -> Some tc
+                      | _ -> None
+                    ) msg.events in
+                    
+                    if List.length tool_calls > 0 then (
+                      (* Handle function calls and continue conversation *)
+                      Printf.printf "🔧 LLM requested %d function call(s)\n" (List.length tool_calls);
+                      
+                      (* Execute all function calls and collect results *)
+                      let* tool_results = Lwt_list.map_s (fun tc ->
+                        Printf.printf "🔧 Executing: %s\n" tc.name;
+                        let* result = tool_executor tc in
+                        let response_event = ToolCallResponse result in
+                        Lwt.return response_event
+                      ) tool_calls in
+                      
+                      (* Continue conversation with tool results *)
+                      let updated_conversation = conversation_history @ [
+                        msg;  (* LLM's message with function calls *)
+                        { role = "user"; content = ""; events = tool_results; timestamp = Unix.time () }  (* Tool results *)
+                      ] in
+                      
+                      Printf.printf "🔄 Continuing LLM conversation with tool results\n";
+                      llm_conversation_loop updated_conversation
+                    ) else (
+                      (* No function calls - process content *)
+                      if String.length msg.content >= expected_length then (
+                        (* Use tool executor to write file *)
+                        let* write_result = tool_executor { 
+                          id = "write-" ^ string_of_float (Unix.time ());
+                          name = "write_file"; 
+                          args = [("file_path", target_file); ("content", msg.content)]
+                        } in
+                        Printf.printf "✅ Generated %d chars to %s\n" (String.length msg.content) target_file;
+                        Lwt.return write_result
+                      ) else (
+                        Printf.printf "⚠️ Generated content too short (%d chars, expected %d+)\n" 
+                          (String.length msg.content) expected_length;
+                        Lwt.return { content = ""; success = false; error_msg = Some "Generated content too short" }
+                      )
+                    )
+              in
+              
+              (* Start conversation with initial prompt *)
+              let initial_conversation = [
+                { role = "user"; content = prompt; events = []; timestamp = Unix.time () }
+              ] in
+              llm_conversation_loop initial_conversation
               
           | Wait { reason; duration } ->
               Printf.printf "⏳ Waiting %.1fs: %s\n" duration reason;
@@ -402,7 +436,7 @@ let cognitive_loop config tool_executor state conversation =
       flush_all ();
       
       (* Phase 8.2: Check if task should use template-free decomposition *)
-      if Micro_task_decomposer.should_use_micro_decomposition goal then (
+      if config.force_template_free || Micro_task_decomposer.should_use_micro_decomposition goal then (
         Printf.printf "🔬 Complex task detected - using template-free decomposition strategy\n";
         flush_all ();
         
