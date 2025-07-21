@@ -4,8 +4,13 @@ open Types
 let default_config = {
   api_key = "";
   api_endpoint = "https://generativelanguage.googleapis.com/v1beta/models";
-  model = "gemini-2.0-flash";  (* Use 2.0-flash for faster responses *)
+  model = "gemini-2.0-flash";  (* Default fast model *)
   enable_thinking = false;     (* Disable thinking for speed *)
+}
+
+(** Create config with specific model *)
+let config_with_model base_config model_name = {
+  base_config with model = model_name
 }
 
 (** Read .env file and extract API key *)

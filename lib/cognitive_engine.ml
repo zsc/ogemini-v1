@@ -228,12 +228,21 @@ let extract_context_from_conversation conversation =
       msg.content
   ) recent_messages
 
-(** Generate execution plan using LLM *)
+(** Generate execution plan using LLM with intelligent model selection *)
 let generate_execution_plan config goal context_list =
   let planning_prompt = create_planning_prompt goal context_list in
-  let* response = Api_client.send_message config [
-    { role = "user"; content = planning_prompt; events = []; timestamp = Unix.time () }
-  ] in
+  
+  (* Use enhanced API client with task-appropriate model selection *)
+  let* api_result = Enhanced_api_client.call_api_robust 
+    ~context:Model_selector.Debug  (* Use debug context for planning *)
+    ~max_retries:3 
+    config 
+    planning_prompt in
+  
+  let response = match api_result with
+    | Ok response_text -> Success { role = "assistant"; content = response_text; events = []; timestamp = Unix.time () }
+    | Error error_msg -> Error error_msg
+  in
   match response with
   | Success msg -> 
       (* Use LLM-driven parser for Phase 5 *)

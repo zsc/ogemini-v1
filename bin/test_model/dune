@@ -1,0 +1,4 @@
+(executable
+ (public_name test_model_selection) 
+ (name test_model_selection)
+ (libraries ogemini))
