@@ -4,12 +4,27 @@ open Types
 (** Phase 8.2: Execute template-free micro-tasks with LLM generation support *)
 let execute_template_free_microtasks config goal tool_executor micro_tasks =
   Printf.printf "🎯 Executing template-free microtasks for goal: %s\n" goal;
+  
+  (* Build context from previous results *)
+  let build_context_from_results results =
+    List.fold_left (fun ctx result ->
+      if result.success then
+        (* Add successful results to context *)
+        (Printf.sprintf "[%s]: %s" result.task_id result.result.content) :: ctx
+      else
+        ctx
+    ) [] results |> List.rev
+  in
+  
   let rec execute_tasks_sequential acc remaining =
     match remaining with
     | [] -> Lwt.return (List.rev acc)
     | task :: rest ->
         Printf.printf "🔧 Executing micro-task: %s\n" task.description;
         flush_all ();
+        
+        (* Build context from previous task results *)
+        let context = build_context_from_results (List.rev acc) in
         
         (* Handle different action types *)
         let* result = match task.action with
@@ -19,6 +34,15 @@ let execute_template_free_microtasks config goal tool_executor micro_tasks =
               
           | LLMGeneration { prompt; target_file; expected_length } ->
               Printf.printf "🧠 LLM Generation: %s\n" target_file;
+              
+              (* Include context from previous tasks if available *)
+              let enhanced_prompt = 
+                if List.length context > 0 then
+                  let context_str = String.concat "\n" context in
+                  Printf.sprintf "Context from previous tasks:\n%s\n\nTask: %s" context_str prompt
+                else
+                  prompt
+              in
               
               (* Phase 7.2: Enhanced LLM generation with function call support *)
               let rec llm_conversation_loop conversation_history =
@@ -73,9 +97,9 @@ let execute_template_free_microtasks config goal tool_executor micro_tasks =
                     )
               in
               
-              (* Start conversation with initial prompt *)
+              (* Start conversation with enhanced prompt *)
               let initial_conversation = [
-                { role = "user"; content = prompt; events = []; timestamp = Unix.time () }
+                { role = "user"; content = enhanced_prompt; events = []; timestamp = Unix.time () }
               ] in
               llm_conversation_loop initial_conversation
               
@@ -97,13 +121,28 @@ let execute_template_free_microtasks config goal tool_executor micro_tasks =
           attempts = 1;
         } in
         
-        if result.success then
-          Printf.printf "✅ Micro-task %s completed successfully\n" task.id
-        else
+        if result.success then (
+          Printf.printf "✅ Micro-task %s completed successfully\n" task.id;
+          execute_tasks_sequential (task_result :: acc) rest
+        ) else (
           Printf.printf "❌ Micro-task %s failed: %s\n" task.id 
             (Option.value result.error_msg ~default:"Unknown error");
-        
-        execute_tasks_sequential (task_result :: acc) rest
+          
+          (* Check if this is a critical failure that should stop execution *)
+          if task.id = "analyze_source_code" then (
+            Printf.printf "🛑 Critical failure: Cannot proceed without reading source file\n";
+            (* Return failure for all remaining tasks *)
+            let failed_remaining = List.map (fun t -> {
+              task_id = t.id;
+              success = false;
+              result = { content = ""; success = false; error_msg = Some "Aborted due to critical failure" };
+              verification_passed = false;
+              attempts = 0;
+            }) rest in
+            Lwt.return (List.rev ((task_result :: acc) @ failed_remaining))
+          ) else
+            execute_tasks_sequential (task_result :: acc) rest
+        )
   in
   execute_tasks_sequential [] micro_tasks
 

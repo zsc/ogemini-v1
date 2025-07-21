@@ -66,11 +66,15 @@ STEP: %s
 FILE TO CREATE: %s
 MODEL: %s
 
-Please generate the complete file content. The content must:
+IMPORTANT: You have access to the results from previous tasks in the context above, including:
+- The source code that was read (if a read_file task was executed)
+- Any analysis or generated code from previous steps
+
+Based on the context and this specific step, generate the complete file content. The content must:
 1. Be syntactically correct and compilable
 2. Include all necessary type definitions and functions for this step
 3. Have proper module dependencies and imports
-4. Not use placeholder comments - implement actual logic
+4. Implement actual logic based on the source code analysis
 5. Follow language best practices and idioms
 
 Generate ONLY the file content, no explanations or markdown formatting.
@@ -137,7 +141,7 @@ let create_autonomous_microtasks config source_file target_language =
         description = Printf.sprintf "Analyze %s source code structure" source_file;
         action = ToolCall { 
           name = "read_file"; 
-          args = [("file_path", "/workspace/" ^ source_file)]; 
+          args = [("file_path", source_file)]; (* source_file already contains full path *)
           rationale = "Read and understand source code before translation" 
         };
         verification = "Source code read and analyzed";
@@ -231,24 +235,22 @@ let decompose_complex_task config task_description =
           String.contains task_lower 's' && String.contains task_lower 'l' then (
     (* This appears to be a translation task - extract actual source file *)
     let source_file = 
-      (* Try to extract filename from task description *)
+      (* Try to extract full file path from task description *)
       let file_regex = Str.regexp "/[^ \t\n]+\\.[a-z]+" in
-      let filename = try (
+      let file_path = try (
         let _ = Str.search_forward file_regex task_description 0 in
         let full_path = Str.matched_string task_description in
-        (* Extract just the filename from the path *)
-        let extracted = Filename.basename full_path in
-        Printf.printf "📂 Extracted from '%s' -> '%s'\n" full_path extracted;
-        extracted
+        Printf.printf "📂 Extracted full path: %s\n" full_path;
+        full_path  (* Keep the full path, don't extract basename *)
       ) with Not_found -> (
         Printf.printf "🔍 No path found in '%s', using fallback\n" task_description;
         if String.contains task_lower 'p' && String.contains task_lower 'y' then
-          "game.py" 
+          "/workspace/game.py" 
         else
-          "main.py"
+          "/workspace/main.py"
       ) in
-      Printf.printf "📂 Final source file: %s\n" filename;
-      filename
+      Printf.printf "📂 Final source file: %s\n" file_path;
+      file_path
     in
     Printf.printf "🔄 Translating source file: %s\n" source_file;
     create_autonomous_microtasks config source_file "OCaml"
