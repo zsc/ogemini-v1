@@ -1,0 +1,5 @@
+(lang dune 3.0)
+
+(package
+ (name ocaml-2048)
+ (depends ocaml dune))
