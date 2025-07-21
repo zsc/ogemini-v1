@@ -1,5 +1,0 @@
-(executable
- (public_name ocaml-2048)
- (name main)
- (modules main game types)
- (libraries unix str))
