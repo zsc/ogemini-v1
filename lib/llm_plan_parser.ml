@@ -427,6 +427,25 @@ let parse_execution_plan_simple plan_response =
                 ToolCall { name = "dune_test"; args = []; rationale = description }
             | "dune_clean" ->
                 ToolCall { name = "dune_clean"; args = []; rationale = description }
+            | "edit_file" ->
+                (* Extract edit parameters from description *)
+                let file_path = 
+                  try
+                    let words = String.split_on_char ' ' description in
+                    let file_candidates = List.filter (fun w -> String.contains w '.') words in
+                    match file_candidates with
+                    | file::_ -> clean_file_path file
+                    | [] -> "/workspace/file.ml"
+                  with _ -> "/workspace/file.ml"
+                in
+                let old_string = "old_code" in
+                let new_string = "new_code" in
+                ToolCall { name = "edit_file"; args = [("file_path", file_path); ("old_string", old_string); ("new_string", new_string)]; rationale = description }
+            | "search_files" ->
+                (* Basic search parameters *)
+                let pattern = "search_pattern" in
+                let path = "/workspace" in
+                ToolCall { name = "search_files"; args = [("pattern", pattern); ("path", path)]; rationale = description }
             | _ ->
                 ToolCall { name = "list_files"; args = [("dir_path", ".")]; rationale = "Unknown: " ^ tool_name }
           in
