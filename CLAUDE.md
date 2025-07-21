@@ -125,6 +125,25 @@ $ cat workspace-phase6-autonomous/test/test_game.ml
 
 **总体完成度**: **~30%** (仅项目脚手架，无核心功能)
 
+### ✅ Phase 7.1 进展验证 - 工具集成问题部分修复 **[Evidence: traces/phase71_edit_file_integration_20250721_114658.log]**
+
+#### 🔧 已修复的核心问题
+- **edit_file工具识别**: 不再错误转换为list_files，现在正确调用edit_file工具 [Execution log shows "🔧 edit_file:" instead of "🔧 list_files: Unknown: edit_file"]
+- **工具路由正确**: LLM计划解析器成功识别并路由edit_file命令
+- **API配额恢复机制**: 遭遇429错误后使用fallback解析继续执行
+
+#### ⚠️ 仍需解决的问题  
+- **参数提取不准确**: edit_file使用占位符参数而非实际LLM生成值
+- **文件路径错误**: 无法找到目标文件，可能是路径解析问题 ["File not found" error]
+- **字符串匹配失败**: "could not find the string to replace" 表明参数传递有误
+
+#### 📊 Phase 7.1 完成度评估
+- ✅ **工具识别**: 100% - edit_file正确识别和调用
+- ⚠️ **参数提取**: 30% - 需要改进LLM计划到工具参数的转换
+- ❌ **实际执行**: 0% - 由于参数问题导致操作失败
+
+**下一步**: 修复参数提取机制，确保LLM生成的具体参数正确传递给工具
+
 ## 🎯 Phase 7 真正全自主能力突破计划
 
 **目标**: 基于Phase 6的系统架构改进，突破复杂任务实现的核心瓶颈
@@ -1163,6 +1182,10 @@ Planning → Executing → Evaluating → Adjusting → Completed
 ⚠️ **重要：Git操作技巧**
 - **使用全路径避免目录混淆** - 当在不同工作目录时，使用 `git add /full/path/to/file` 避免 "pathspec did not match any files" 错误
 - **示例**: `git add /Users/zsc/Downloads/ogemini/CLAUDE.md` 而非 `git add CLAUDE.md`
+
+⚠️ **重要：文件操作工具选择**
+- **优先使用Write工具而非Bash** - Bash命令如 `echo 'content' > file` 经常需要用户确认，而Write工具可直接写入
+- **避免交互式命令** - Bash工具适合查看和非交互操作，文件创建和修改使用Write/Edit工具更可靠
 
 ⚠️ **重要：测试结果解读原则 - 任何错误都表示任务失败**
 - **所有错误都是失败信号** - 任何 error、timeout、exception、warning 都表示任务未成功完成

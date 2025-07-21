@@ -1,0 +1,164 @@
+
+🤖 OGemini - Autonomous Agent Mode
+
+Features:
+• 🧠 Autonomous planning and execution
+• 🔄 Multi-step task orchestration  
+• 🛠️ Smart tool coordination
+• 💬 Collaborative dialogue
+
+I can work autonomously on complex tasks like:
+- Building and testing projects
+- Creating and organizing files
+- Analyzing code and documentation
+- Multi-step development workflows
+
+Just describe your goal and I'll break it down into actionable steps!
+
+✅ Using model: gemini-2.0-flash
+✅ API key loaded: AIzaSyDUtS...
+💭 Thinking mode: disabled
+🧠 Autonomous mode: enabled
+
+👤 You: 
+🤖 Entering Autonomous Mode
+
+I understand you want me to: Use edit_file to replace "hello" with "greetings" in test_file.txt
+
+I'll work autonomously to break this down into steps and execute them. 
+You can say "stop" or "pause" at any time to interrupt.
+
+Let me start by planning...
+
+
+🤖 🧠 Planning: Working on 'Use edit_file to replace "hello" with "greetings" in test_file.txt' with 0 context items
+🧠 Planning for goal: Use edit_file to replace "hello" with "greetings" in test_file.txt
+🤖 Model Selection:
+📋 Task: 
+I need to analyze this goal and create a step-by-step execu
+🧠 Complexity: Medium
+🎯 Context: Debug
+⚡ Selected: gemini-2.5-flash (latency: 3.0s)
+💡 Rationale: Balanced quality-speed tradeoff for debugging
+🔄 Attempt 1/3 with gemini-2.5-flash
+DEBUG: Found API key in environment (39 chars)
+🌐 Calling Gemini API: gemini-2.5-flash
+📤 Request: {"contents":[{"parts":[{"text":"\nI need to analyze this goal and create a step-by-step execution pl
+📥 Full Response: {
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Here is a step-by-step execution plan:\n\n1.  [TOOL: edit_file] Replace \"hello\" with \"greetings\" in test_file.txt\n2.  [TOOL: read_file] Read test_file.txt to verify the changes",
+            "thoughtSignature": "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"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 1266,
+    "candidatesTokenCount": 58,
+    "totalTokenCount": 2116,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 1266
+      }
+    ],
+    "thoughtsTokenCount": 792
+  },
+  "modelVersion": "gemini-2.5-flash",
+  "responseId": "Orh9aIygA7O0qtsPgOLG4Ag"
+}
+
+✅ API Success: gemini-2.5-flash (4.97s)
+🎉 Success after 1 attempts
+✅ Enhanced API Success: gemini-2.5-flash (4.97s)
+🌐 Calling Gemini API: gemini-2.0-flash
+📤 Request: {"contents":[{"parts":[{"text":"\nI need to extract actionable tool calls from this planning respons
+📥 Full Response: {
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.",
+    "status": "RESOURCE_EXHAUSTED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+        "violations": [
+          {
+            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+            "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+            "quotaDimensions": {
+              "location": "global",
+              "model": "gemini-2.0-flash"
+            },
+            "quotaValue": "200"
+          }
+        ]
+      },
+      {
+        "@type": "type.googleapis.com/google.rpc.Help",
+        "links": [
+          {
+            "description": "Learn more about Gemini API quotas",
+            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"
+          }
+        ]
+      },
+      {
+        "@type": "type.googleapis.com/google.rpc.RetryInfo",
+        "retryDelay": "53s"
+      }
+    ]
+  }
+}
+
+🧠 LLM parsing response:
+Error: No candidates in response
+🔍 Parsing 1 lines from LLM response
+🔍 First few lines of LLM response:
+  0: 'Error: No candidates in response'
+🔍 Skipping line: Error: No candidates in response
+📋 Extracted 0 actions
+🔍 Plan parsing debug: Fallback parsing (LLM failed)
+📋 Plan generated:
+Here is a step-by-step execution plan:
+
+1.  [TOOL: edit_file] Replace "hello" with "greetings" in test_file.txt
+2.  [TOOL: read_file] Read test_file.txt to verify the changes
+⚡ Executing: Step 0/2 (0%) - 0 results so far
+
+🤖 ⚡ Executing: Step 0/2 (0%) - 0 results so far
+📋 Step 1/2: 🔧 Executing: edit_file - Replace "hello" with "greetings" in test_file.txt
+🔧 edit_file: ❌ (0.00s)
+❌ Failed
+⚡ Executing: Step 1/2 (50%) - 1 results so far
+
+🤖 ⚡ Executing: Step 1/2 (50%) - 1 results so far
+📋 Step 2/2: 🔧 Executing: read_file - Read test_file.txt to verify the changes
+🔧 read_file: ❌ (0.00s)
+❌ Failed
+⚡ Executing: Step 2/2 (100%) - 2 results so far
+
+🤖 ⚡ Executing: Step 2/2 (100%) - 2 results so far
+🔍 Evaluating: 2 results, needs work, 2 issues
+
+🤖 🔍 Evaluating: 2 results, needs work, 2 issues
+🔍 Evaluation: Needs Adjustment
+⚠️  Issues found:
+Tool unknown failed: File not found. Consider alternative approach.
+Tool unknown failed: Failed to edit, could not find the string to replace in /workspace/test_file.txt. Consider alternative approach.
+🔄 Adjusting: Addressing 2 failures, 0 new actions planned
+
+🤖 🔄 Adjusting: Addressing 2 failures, 0 new actions planned
+🔄 Adjusting strategy based on failures...
+🎯 Completed: Failed and adjusted: 2 failures (0 final results)
+
+Ready for your next request!
+
+👤 You: 👋 Goodbye!
