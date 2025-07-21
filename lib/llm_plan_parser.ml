@@ -15,6 +15,8 @@ AVAILABLE TOOLS:
 - list_files(dir_path) - List files in directory
 - read_file(file_path) - Read file contents  
 - write_file(file_path, content) - Write content to file
+- edit_file(file_path, old_string, new_string, expected_replacements) - Replace text in file
+- search_files(pattern, path, file_pattern) - Search for text patterns in files
 - shell(command) - Execute shell command
 - dune_build(target) - Build OCaml project
 - dune_test(target) - Run tests
@@ -128,6 +130,30 @@ let create_action_from_parsed tool_name params_str rationale =
       let content = List.assoc_opt "content" params |> Option.value ~default:"(* Generated OCaml file *)" in
       let clean_path = clean_file_path file_path in
       ToolCall { name = "write_file"; args = [("file_path", clean_path); ("content", content)]; rationale }
+      
+  | "edit_file" ->
+      let file_path = List.assoc_opt "file_path" params |> Option.value ~default:"/workspace/main.ml" in
+      let old_string = List.assoc_opt "old_string" params |> Option.value ~default:"" in
+      let new_string = List.assoc_opt "new_string" params |> Option.value ~default:"" in
+      let expected_replacements = List.assoc_opt "expected_replacements" params in
+      let clean_path = clean_file_path file_path in
+      let args = [("file_path", clean_path); ("old_string", old_string); ("new_string", new_string)] in
+      let final_args = match expected_replacements with
+        | Some count -> ("expected_replacements", count) :: args
+        | None -> args
+      in
+      ToolCall { name = "edit_file"; args = final_args; rationale }
+      
+  | "search_files" ->
+      let pattern = List.assoc_opt "pattern" params |> Option.value ~default:"" in
+      let path = List.assoc_opt "path" params |> Option.value ~default:"/workspace" in
+      let file_pattern = List.assoc_opt "file_pattern" params in
+      let args = [("pattern", pattern); ("path", path)] in
+      let final_args = match file_pattern with
+        | Some fp -> ("file_pattern", fp) :: args
+        | None -> args
+      in
+      ToolCall { name = "search_files"; args = final_args; rationale }
       
   | "shell" ->
       let command = List.assoc_opt "command" params |> Option.value ~default:"ls -la" in

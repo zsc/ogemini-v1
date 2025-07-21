@@ -41,6 +41,10 @@ let execute_tool_call tool_call =
       Tools.Build_tools.dune_test target
   | "dune_clean" ->
       Tools.Build_tools.dune_clean ()
+  | "edit_file" ->
+      Tools.Edit_tools.tool_edit_file tool_call.args
+  | "search_files" ->
+      Tools.Search_tools.tool_search_files tool_call.args
   | _ ->
       Lwt.return { content = ""; success = false; error_msg = Some ("Unknown tool: " ^ tool_call.name) }
   in
@@ -182,8 +186,52 @@ Just describe your goal and I'll break it down into actionable steps!
 |};
   flush_all ()
 
+(** Print help message *)
+let print_help () =
+  Printf.printf {|OGemini Autonomous Agent
+
+USAGE:
+    main_autonomous.exe [OPTIONS]
+
+OPTIONS:
+    --help, -h     Show this help message
+    --version, -v  Show version information
+
+DESCRIPTION:
+    Starts the autonomous agent mode with interactive chat loop.
+    The agent can autonomously plan and execute complex tasks.
+
+EXAMPLES:
+    main_autonomous.exe           # Start interactive mode
+    main_autonomous.exe --help    # Show this help
+
+|};
+  exit 0
+
+(** Print version information *)
+let print_version () =
+  Printf.printf "OGemini Autonomous Agent v1.0.0\n";
+  exit 0
+
+(** Parse command line arguments *)
+let parse_args () =
+  let parse_args_list args =
+    match args with
+    | [] -> ()
+    | "--help" :: _ | "-h" :: _ -> print_help ()
+    | "--version" :: _ | "-v" :: _ -> print_version ()
+    | arg :: _ ->
+        Printf.printf "Unknown option: %s\n" arg;
+        Printf.printf "Use --help for usage information.\n";
+        exit 1
+  in
+  parse_args_list (List.tl (Array.to_list Sys.argv))
+
 (** Main program with autonomous capabilities *)
 let main () =
+  (* Parse command line arguments first *)
+  parse_args ();
+  
   match Config.init_config () with
   | Config.ConfigError err ->
       Printf.printf "❌ Configuration error: %s\n" err;

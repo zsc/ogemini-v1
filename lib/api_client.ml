@@ -138,6 +138,56 @@ let build_request_json text config =
               ("properties", `Assoc []);
               ("required", `List [])
             ])
+          ];
+          (* Edit file tool *)
+          `Assoc [
+            ("name", `String "edit_file");
+            ("description", `String "Replace specific text in a file with new text. Requires exact string matching. Use for precise text replacement and refactoring.");
+            ("parameters", `Assoc [
+              ("type", `String "object");
+              ("properties", `Assoc [
+                ("file_path", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "The absolute path to the file to edit")
+                ]);
+                ("old_string", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "The exact text to find and replace (must match exactly)")
+                ]);
+                ("new_string", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "The text to replace the old_string with")
+                ]);
+                ("expected_replacements", `Assoc [
+                  ("type", `String "integer");
+                  ("description", `String "Optional: Number of replacements expected (defaults to 1)")
+                ])
+              ]);
+              ("required", `List [`String "file_path"; `String "old_string"; `String "new_string"])
+            ])
+          ];
+          (* Search files tool *)
+          `Assoc [
+            ("name", `String "search_files");
+            ("description", `String "Search for text patterns in files using regular expressions. Returns matching lines with file paths and line numbers.");
+            ("parameters", `Assoc [
+              ("type", `String "object");
+              ("properties", `Assoc [
+                ("pattern", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "Regular expression pattern to search for")
+                ]);
+                ("path", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "Directory path to search in (defaults to current directory)")
+                ]);
+                ("file_pattern", `Assoc [
+                  ("type", `String "string");
+                  ("description", `String "Optional: File pattern to filter search (e.g., '*.ml', '*.{ts,tsx}')")
+                ])
+              ]);
+              ("required", `List [`String "pattern"])
+            ])
           ]
         ])
       ]

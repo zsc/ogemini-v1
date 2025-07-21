@@ -21,6 +21,8 @@ Please create a concrete execution plan using ONLY these available tools:
 - list_files (dir_path) - List files in a directory
 - read_file (file_path) - Read a file's contents  
 - write_file (file_path, content) - Write content to a file
+- edit_file (file_path, old_string, new_string, expected_replacements) - Replace text in file
+- search_files (pattern, path, file_pattern) - Search for text patterns in files
 - shell (command) - Execute a shell command
 - dune_build (target) - Build an OCaml project
 - dune_test (target) - Run tests
@@ -134,7 +136,28 @@ let parse_execution_plan response_content =
             | "dune_clean" ->
                 ToolCall { 
                   name = "dune_clean"; 
-                  args = []; 
+                  args = [];
+                  rationale = description 
+                }
+                
+            | "edit_file" ->
+                ToolCall { 
+                  name = "edit_file"; 
+                  args = [
+                    ("file_path", "/workspace/main.ml");
+                    ("old_string", "old_code");
+                    ("new_string", "new_code")
+                  ]; 
+                  rationale = description 
+                }
+                
+            | "search_files" ->
+                ToolCall { 
+                  name = "search_files"; 
+                  args = [
+                    ("pattern", "function");
+                    ("path", "/workspace")
+                  ]; 
                   rationale = description 
                 }
                 

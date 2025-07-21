@@ -4,7 +4,7 @@ open Ogemini.Types
 
 (** Safe command whitelist - basic commands that are generally safe *)
 let safe_commands = [
-  "ls"; "cat"; "head"; "tail"; "wc"; "grep"; "find"; "pwd"; "date";
+  "ls"; "cat"; "head"; "tail"; "wc"; "grep"; "find"; "pwd"; "date"; "cd";
   "echo"; "which"; "whoami"; "id"; "uname"; "hostname";
   "dune"; "opam"; "ocamlfind"; "ocaml"; "ocamlc"; "ocamlopt";
   "git"; "make"; "cmake"; "cargo"; "npm"; "node"; "python"; "python3";

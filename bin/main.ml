@@ -35,6 +35,10 @@ let execute_tool_call tool_call =
       Tools.Build_tools.dune_test target
   | "dune_clean" ->
       Tools.Build_tools.dune_clean ()
+  | "edit_file" ->
+      Tools.Edit_tools.tool_edit_file tool_call.args
+  | "search_files" ->
+      Tools.Search_tools.tool_search_files tool_call.args
   | _ ->
       Lwt.return { content = ""; success = false; error_msg = Some ("Unknown tool: " ^ tool_call.name) }
 
