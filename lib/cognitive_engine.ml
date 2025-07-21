@@ -1,6 +1,78 @@
 open Lwt.Syntax
 open Types
 
+(** Phase 8.2: Execute template-free micro-tasks with LLM generation support *)
+let execute_template_free_microtasks config goal tool_executor micro_tasks =
+  Printf.printf "🎯 Executing template-free microtasks for goal: %s\n" goal;
+  let rec execute_tasks_sequential acc remaining =
+    match remaining with
+    | [] -> Lwt.return (List.rev acc)
+    | task :: rest ->
+        Printf.printf "🔧 Executing micro-task: %s\n" task.description;
+        flush_all ();
+        
+        (* Handle different action types *)
+        let* result = match task.action with
+          | ToolCall { name; args; rationale } ->
+              Printf.printf "🔧 Executing: %s - %s\n" name rationale;
+              tool_executor { id = "llm-gen-" ^ string_of_float (Unix.time ()); name; args }
+              
+          | LLMGeneration { prompt; target_file; expected_length } ->
+              Printf.printf "🧠 LLM Generation: %s\n" target_file;
+              (* Call LLM to generate code content *)
+              let* llm_response = Api_client.send_message config [
+                { role = "user"; content = prompt; events = []; timestamp = Unix.time () }
+              ] in
+              begin match llm_response with
+                | Success msg ->
+                    (* Write the generated content to the target file *)
+                    if String.length msg.content >= expected_length then (
+                      (* Use tool executor to write file *)
+                      let* write_result = tool_executor { 
+                        id = "write-" ^ string_of_float (Unix.time ());
+                        name = "write_file"; 
+                        args = [("file_path", target_file); ("content", msg.content)]
+                      } in
+                      Printf.printf "✅ Generated %d chars to %s\n" (String.length msg.content) target_file;
+                      Lwt.return write_result
+                    ) else (
+                      Printf.printf "⚠️ Generated content too short (%d chars, expected %d+)\n" 
+                        (String.length msg.content) expected_length;
+                      Lwt.return { content = ""; success = false; error_msg = Some "Generated content too short" }
+                    )
+                | Error err ->
+                    Printf.printf "❌ LLM generation failed: %s\n" err;
+                    Lwt.return { content = ""; success = false; error_msg = Some err }
+              end
+              
+          | Wait { reason; duration } ->
+              Printf.printf "⏳ Waiting %.1fs: %s\n" duration reason;
+              let* () = Lwt_unix.sleep duration in
+              Lwt.return { content = Printf.sprintf "Waited %.1fs" duration; success = true; error_msg = None }
+              
+          | UserInteraction { prompt; expected_response = _ } ->
+              Printf.printf "👤 User interaction: %s\n" prompt;
+              Lwt.return { content = "User interaction simulated"; success = true; error_msg = None }
+        in
+        
+        let task_result = {
+          task_id = task.id;
+          success = result.success;
+          result = result;
+          verification_passed = result.success; (* Simple verification for now *)
+          attempts = 1;
+        } in
+        
+        if result.success then
+          Printf.printf "✅ Micro-task %s completed successfully\n" task.id
+        else
+          Printf.printf "❌ Micro-task %s failed: %s\n" task.id 
+            (Option.value result.error_msg ~default:"Unknown error");
+        
+        execute_tasks_sequential (task_result :: acc) rest
+  in
+  execute_tasks_sequential [] micro_tasks
+
 (** Core cognitive engine for autonomous agent behavior *)
 
 (** Create planning prompt for goal decomposition *)
@@ -279,6 +351,12 @@ let execute_action config goal existing_files tool_executor action =
       Printf.printf "Expected: %s\n" expected_response;
       flush_all ();
       Lwt.return { content = "User interaction logged"; success = true; error_msg = None }
+  | LLMGeneration { prompt; target_file; expected_length } ->
+      Printf.printf "🧠 LLM Generation not supported in standard execute_action\n";
+      Printf.printf "Target: %s (expected %d+ chars)\n" target_file expected_length;
+      Printf.printf "Prompt preview: %s\n" (String.sub prompt 0 (min 50 (String.length prompt)));
+      flush_all ();
+      Lwt.return { content = "LLM generation requires template-free executor"; success = false; error_msg = Some "Use template-free mode for LLM generation" }
 
 (** Evaluate execution results *)
 let evaluate_results actions (results : simple_tool_result list) =
@@ -323,23 +401,28 @@ let cognitive_loop config tool_executor state conversation =
       Printf.printf "🧠 Planning for goal: %s\n" goal;
       flush_all ();
       
-      (* Check if task should use micro-decomposition *)
+      (* Phase 8.2: Check if task should use template-free decomposition *)
       if Micro_task_decomposer.should_use_micro_decomposition goal then (
-        Printf.printf "🔬 Complex task detected - using micro-task decomposition strategy\n";
+        Printf.printf "🔬 Complex task detected - using template-free decomposition strategy\n";
         flush_all ();
-        let micro_tasks = Micro_task_decomposer.create_micro_tasks_for_goal goal in
-        Printf.printf "📋 Generated %d micro-tasks for execution\n" (List.length micro_tasks);
+        
+        (* Use template-free decomposer instead of hardcoded templates *)
+        let* micro_tasks = Template_free_decomposer.decompose_complex_task config goal in
+        Printf.printf "📋 Generated %d LLM-driven micro-tasks for execution\n" (List.length micro_tasks);
         flush_all ();
-        (* Execute micro-tasks directly *)
-        let* micro_results = Micro_task_decomposer.execute_micro_tasks config goal [] tool_executor execute_action micro_tasks in
-        let (successful_count, total_count, completion_percentage) = 
-          Micro_task_decomposer.calculate_progress micro_results (List.length micro_tasks) in
-        Printf.printf "🎯 Micro-task execution completed: %d/%d tasks successful (%.1f%%)\n" 
+        
+        (* Execute micro-tasks with enhanced LLM generation support *)
+        let* micro_results = execute_template_free_microtasks config goal tool_executor micro_tasks in
+        let successful_count = List.fold_left (fun acc mr -> if mr.success then acc + 1 else acc) 0 micro_results in
+        let total_count = List.length micro_tasks in
+        let completion_percentage = if total_count > 0 then (float_of_int successful_count) *. 100.0 /. (float_of_int total_count) else 0.0 in
+        
+        Printf.printf "🎯 Template-free execution completed: %d/%d tasks successful (%.1f%%)\n" 
           successful_count total_count completion_percentage;
         flush_all ();
         
         let summary = Printf.sprintf 
-          "Micro-task decomposition completed. %d/%d tasks successful (%.1f%% completion rate)" 
+          "Template-free decomposition completed. %d/%d tasks successful (%.1f%% completion rate)" 
           successful_count total_count completion_percentage in
         
         (* Convert micro-task results to simple tool results for evaluation *)

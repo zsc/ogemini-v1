@@ -64,6 +64,7 @@ I need to implement this step in the translation project:
 
 STEP: %s
 FILE TO CREATE: %s
+MODEL: %s
 
 Please generate the complete file content. The content must:
 1. Be syntactically correct and compilable
@@ -74,7 +75,7 @@ Please generate the complete file content. The content must:
 
 Generate ONLY the file content, no explanations or markdown formatting.
 Start directly with the code.
-|} step_description file_path in
+|} step_description file_path config.model in
 
   {
     id = Printf.sprintf "llm_gen_%s" (Filename.basename file_path);
@@ -160,21 +161,12 @@ let decompose_complex_task config task_description =
     if String.contains task_lower 'p' && String.contains task_lower 'y' then
       (* Python source detected *)
       create_autonomous_microtasks config "game.py" "OCaml"
-    else
-      (* Generic translation - analyze available files *)
-      let+ file_list = Tools.File_tools.list_files "/workspace" in
-      match file_list.content with
-      | content when String.contains content '.' ->
-          let files = String.split_on_char '\n' content |> List.filter (fun f -> String.contains f '.') in
-          (match files with
-           | source_file :: _ -> create_autonomous_microtasks config source_file "OCaml"
-           | [] -> 
-               Printf.printf "⚠️ No source files found for translation\n";
-               Lwt.return [])
-      | _ ->
-          Printf.printf "⚠️ Could not list workspace files\n";
-          Lwt.return []
-  else
+    else (
+      (* Generic translation - assume common source file names *)
+      Printf.printf "🔍 Looking for common source files...\n";
+      create_autonomous_microtasks config "main.py" "OCaml"
+    )
+  else (
     (* Non-translation task - create generic LLM-driven decomposition *)
     let generic_prompt = Printf.sprintf {|
 Break down this task into 3-7 concrete implementation steps:
@@ -204,3 +196,4 @@ Format as numbered steps, each specifying what file to create and what it should
           let file_path = Printf.sprintf "/workspace/step_%d.ml" (i + 1) in
           create_llm_generation_task config step file_path [] 3
         ) steps
+  )

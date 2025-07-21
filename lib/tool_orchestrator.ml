@@ -175,7 +175,7 @@ let execute_strategy_with_retry config goal existing_files tool_executor strateg
       Lwt.return []
     else
       execute_strategy config goal existing_files tool_executor strategy >>= fun results ->
-      let failed_results = List.filter (fun r -> not r.success) results in
+      let failed_results = List.filter (fun (r : Types.simple_tool_result) -> not r.success) results in
       if List.length failed_results = 0 then
         Lwt.return results
       else (
@@ -199,22 +199,23 @@ let monitor_execution_progress actions results =
   flush_all ()
 
 (** Generate execution summary *)
-let generate_execution_summary actions results =
+let generate_execution_summary actions (results : Types.simple_tool_result list) =
   let total_actions = List.length actions in
   let total_results = List.length results in
-  let successful = List.filter (fun r -> r.success) results in
-  let failed = List.filter (fun r -> not r.success) results in
+  let successful = List.filter (fun (r : Types.simple_tool_result) -> r.success) results in
+  let failed = List.filter (fun (r : Types.simple_tool_result) -> not r.success) results in
   
   let summary = Printf.sprintf 
     "Execution Summary: %d/%d actions completed | ✅ %d successes | ❌ %d failures"
     total_results total_actions (List.length successful) (List.length failed) in
     
-  let detailed_results = List.mapi (fun i result ->
+  let detailed_results = List.mapi (fun i (result : Types.simple_tool_result) ->
     let action_desc = if i < List.length actions then
       match List.nth actions i with
       | ToolCall { name; rationale; _ } -> Printf.sprintf "%s: %s" name rationale
       | Wait { reason; _ } -> Printf.sprintf "Wait: %s" reason  
       | UserInteraction { prompt; _ } -> Printf.sprintf "User: %s" prompt
+      | LLMGeneration { target_file; _ } -> Printf.sprintf "LLM Gen: %s" target_file
     else
       "Unknown action"
     in
