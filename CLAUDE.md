@@ -975,6 +975,10 @@ Planning → Executing → Evaluating → Adjusting → Completed
 - **修复根本原因而非消除警告** - 应分析为什么变量未被使用，是否缺少逻辑连接
 - **信息流完整性** - 确保提取的数据被正确使用，避免数据丢失
 
+⚠️ **重要：Git操作技巧**
+- **使用全路径避免目录混淆** - 当在不同工作目录时，使用 `git add /full/path/to/file` 避免 "pathspec did not match any files" 错误
+- **示例**: `git add /Users/zsc/Downloads/ogemini/CLAUDE.md` 而非 `git add CLAUDE.md`
+
 ⚠️ **重要：测试结果解读原则 - 任何错误都表示任务失败**
 - **所有错误都是失败信号** - 任何 error、timeout、exception、warning 都表示任务未成功完成
 - **仔细阅读完整输出** - 不能只看部分输出就下结论，必须完整检查所有错误信息
