@@ -199,22 +199,99 @@ let create_autonomous_microtasks config source_file target_language =
       
       let implementation_tasks = create_tasks [] ["analyze_source_code"] 1 implementation_steps in
       
-      (* Add a build verification task at the end *)
-      let build_task = {
-        id = "verify_build";
-        description = "Attempt to build the generated OCaml code and fix any compilation errors";
-        action = ToolCall {
-          name = "shell";
-          args = [("command", "cd /workspace && echo '(lang dune 3.0)' > dune-project && echo '(executable (name main))' > dune && dune build 2>&1 || true")];
-          rationale = "Test if generated code compiles and identify any errors"
-        };
-        verification = "Build attempt completed";
-        dependencies = List.map (fun t -> t.id) implementation_tasks;
-        retry_limit = 0;
-        complexity = `Simple;
-      } in
+      (* Add iterative build-fix cycle tasks *)
+      let rec create_build_fix_cycle attempt prev_deps =
+        if attempt > 3 then [] else  (* Limit to 3 attempts *)
+        
+        (* First, create minimal dune files if needed *)
+        let setup_dune_task = {
+          id = Printf.sprintf "setup_dune_%d" attempt;
+          description = "Create minimal dune configuration files";
+          action = LLMGeneration {
+            prompt = "Generate a minimal dune-project file with just '(lang dune 3.0)' and a simple dune file for an executable. Keep it minimal to avoid syntax errors. Generate the content for dune-project first.";
+            target_file = "/workspace/dune-project";
+            expected_length = 5;
+          };
+          verification = "Dune project file created";
+          dependencies = prev_deps;
+          retry_limit = 0;
+          complexity = `Simple;
+        } in
+        
+        let create_dune_task = {
+          id = Printf.sprintf "create_dune_%d" attempt;
+          description = "Create dune executable configuration";
+          action = LLMGeneration {
+            prompt = "Generate a minimal dune file for an OCaml executable. The executable should be named based on the .ml files in the workspace. Just use format: (executable (name filename_without_ml))";
+            target_file = "/workspace/dune";
+            expected_length = 5;
+          };
+          verification = "Dune file created";
+          dependencies = [setup_dune_task.id];
+          retry_limit = 0;
+          complexity = `Simple;
+        } in
+        
+        (* Build attempt *)
+        let build_task = {
+          id = Printf.sprintf "build_attempt_%d" attempt;
+          description = Printf.sprintf "Build attempt %d - Check if OCaml code compiles" attempt;
+          action = ToolCall {
+            name = "dune_build";
+            args = [];
+            rationale = "Attempt to build the generated OCaml code"
+          };
+          verification = "Build completed";
+          dependencies = create_dune_task.id :: prev_deps;
+          retry_limit = 0;
+          complexity = `Simple;
+        } in
+        
+        (* Fix task - only created if build fails *)
+        let fix_task = {
+          id = Printf.sprintf "fix_errors_%d" attempt;
+          description = Printf.sprintf "Fix compilation errors from attempt %d" attempt;
+          action = LLMGeneration {
+            prompt = Printf.sprintf {|
+The build failed in attempt %d. You need to fix the OCaml code compilation errors.
+
+IMPORTANT: The previous build task output will be in the context above. Look for error messages like:
+- "Error: Unbound value" - missing function or variable definition
+- "Error: This expression has type X but an expression was expected of type Y" - type mismatch
+- "Error: Syntax error" - OCaml syntax issues
+- "Error: Unbound module" - missing module or incorrect module name
+
+Based on the SPECIFIC ERROR MESSAGE from the build output above, generate the corrected OCaml code.
+
+Common fixes:
+1. For recursive functions, use 'let rec' instead of just 'let'
+2. For undefined values, ensure all functions are defined before use
+3. For type errors, check function signatures match usage
+4. For syntax errors, ensure proper OCaml syntax (;; for top-level, ; for sequences)
+
+Generate ONLY the corrected OCaml code, no markdown formatting.
+Focus on fixing the specific error mentioned in the build output.
+
+IMPORTANT: Look at the error message to identify which file has the problem.
+The error will typically show the file path like "File "path/to/file.ml", line X"
+Generate the complete fixed content for that specific file.
+|} attempt;
+            target_file = Printf.sprintf "/workspace/fixed_%d.ml" attempt;
+            expected_length = 5;
+          };
+          verification = "Fix generated";
+          dependencies = [build_task.id];
+          retry_limit = 0;
+          complexity = `Medium;
+        } in
+        
+        [setup_dune_task; create_dune_task; build_task; fix_task] @ 
+        (create_build_fix_cycle (attempt + 1) [fix_task.id])
+      in
       
-      analysis_task :: implementation_tasks @ [build_task]
+      let build_fix_tasks = create_build_fix_cycle 1 (List.map (fun t -> t.id) implementation_tasks) in
+      
+      analysis_task :: implementation_tasks @ build_fix_tasks
 
 (** Create simple file reading micro-task *)
 let create_simple_file_task _config task_description =
