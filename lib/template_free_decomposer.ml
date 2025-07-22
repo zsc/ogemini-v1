@@ -13,8 +13,11 @@ I need to analyze Python source code and create a PURE OCaml implementation plan
 
 SOURCE FILE: %s
 TARGET LANGUAGE: %s
+WORKING DIRECTORY: /workspace
 
 IMPORTANT: 
+- You are working in the /workspace directory
+- All files should be created in /workspace
 - Create a PURE OCaml translation, NOT Python bindings
 - Translate Python classes to OCaml modules with mutable state or functional style
 - Translate Python methods to OCaml functions
@@ -74,10 +77,17 @@ I need to implement this step in the translation project:
 STEP: %s
 FILE TO CREATE: %s
 MODEL: %s
+WORKING DIRECTORY: /workspace
 
 IMPORTANT: You have access to the results from previous tasks in the context above, including:
 - The PYTHON source code that was read (if a read_file task was executed)
 - Any analysis or generated code from previous steps
+
+CONTEXT AWARENESS:
+- You are working in /workspace directory
+- Use 'pwd' command if you need to verify your location
+- When using list_files, specify "/workspace" as the path to see project files
+- All file operations should be relative to /workspace
 
 Based on the context and this specific step, generate the complete file content. 
 
@@ -334,7 +344,9 @@ let create_simple_file_task _config task_description =
     id = "read_and_analyze_file";
     description = Printf.sprintf "Read and analyze file %s to answer user's question" file_path;
     action = LLMGeneration { 
-      prompt = Printf.sprintf "TASK: Create an OCaml version of the Python code in %s
+      prompt = Printf.sprintf {|TASK: Create an OCaml version of the Python code in %s
+
+WORKING DIRECTORY: /workspace
 
 REQUIRED WORKFLOW:
 1. FIRST: Use read_file tool to read %s and examine its content
@@ -342,12 +354,14 @@ REQUIRED WORKFLOW:
 3. FINALLY: Generate OCaml code that implements the same functionality
 
 IMPORTANT: You MUST follow this exact sequence:
+- You are working in /workspace directory
 - Call read_file(%s) to get the source code
+- Use pwd or list_files("/workspace") if you need to understand the workspace
 - DO NOT call build tools until you have generated OCaml code
 - Your goal is CODE GENERATION, not building existing projects
 - Write the generated OCaml code that translates the Python functionality
 
-Expected output: Working OCaml code that replicates the Python program's behavior." file_path file_path file_path;
+Expected output: Working OCaml code that replicates the Python program's behavior.|} file_path file_path file_path;
       target_file = "/workspace/translated.ml"; (* Create actual OCaml file *)
       expected_length = 50; (* Expect substantial code generation *)
     };
